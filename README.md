@@ -20,8 +20,8 @@ FuzzyMatchFinder is an advanced entity matching solution using machine learning 
 
 ### Phase 2: Core Matching Logic
 
-- [ ] Develop approximate matching algorithms
-- [ ] Integrate machine learning models for enhanced matching
+- [x] Develop approximate matching algorithms
+- [x] Integrate machine learning models for enhanced matching
 - [ ] Implement scoring system for match candidates
 
 ### Phase 3: API Development
