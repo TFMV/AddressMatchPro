@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"github.com/TFMV/FuzzyMatchFinder/pkg/pca"
 	"github.com/TFMV/FuzzyMatchFinder/pkg/tfidf"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"gonum.org/v1/gonum/mat"
 )
@@ -36,36 +36,33 @@ func main() {
 	}
 	defer pool.Close()
 
-	// Query the customer data
-	dbRows, err := pool.Query(context.Background(), "SELECT first_name, last_name, street, city, state, zip_code FROM customers")
+	// Query the customer data with 10% sampling
+	query := "SELECT first_name, last_name, street, city, state, zip_code FROM customers TABLESAMPLE SYSTEM (10)"
+	rows, err := pool.Query(context.Background(), query)
 	if err != nil {
 		log.Fatalf("Failed to execute query: %v", err)
 	}
-	defer dbRows.Close()
+	defer rows.Close()
 
 	var entities []string
-	for dbRows.Next() {
-		var firstName, lastName, street, city, state, zipCode sql.NullString
-		if err := dbRows.Scan(&firstName, &lastName, &street, &city, &state, &zipCode); err != nil {
+	for rows.Next() {
+		var firstName, lastName, street, city, state, zipCode pgtype.Text
+		if err := rows.Scan(&firstName, &lastName, &street, &city, &state, &zipCode); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
-
-		// Convert sql.NullString to string with a fallback for NULL values
-		entity := standardizeAddress(
-			nullStringToString(firstName),
-			nullStringToString(lastName),
-			nullStringToString(street),
-			nullStringToString(city),
-			nullStringToString(state),
-			nullStringToString(zipCode),
-		)
+		entity := standardizeAddress(firstName.String, lastName.String, street.String, city.String, state.String, zipCode.String)
 		entities = append(entities, entity)
 	}
 
-	if err := dbRows.Err(); err != nil {
+	if err := rows.Err(); err != nil {
 		log.Fatalf("Failed to read rows: %v", err)
 	}
 
+	// Process the sampled data
+	processBatch(pool, entities)
+}
+
+func processBatch(pool *pgxpool.Pool, entities []string) {
 	// Convert text data to TF-IDF vectors using custom vectorizer
 	vectorizer := tfidf.NewVectorizer()
 	X := vectorizer.FitTransform(entities)
@@ -78,11 +75,11 @@ func main() {
 			matData[i*numCols+j] = X[i][j]
 		}
 	}
-	matrix := mat.NewDense(numRows, numCols, matData)
+	mat := mat.NewDense(numRows, numCols, matData)
 
 	// Perform PCA
 	pcaModel := pca.NewPCA(10)
-	X_pca := pcaModel.FitTransform(matrix)
+	X_pca := pcaModel.FitTransform(mat)
 
 	// Find the index of the representative entities
 	scores := X_pca.RawMatrix().Data
@@ -108,12 +105,4 @@ func main() {
 	}
 
 	fmt.Println("Inserted representative entities into the reference_entities table.")
-}
-
-// nullStringToString converts sql.NullString to a regular string with a fallback for NULL values
-func nullStringToString(ns sql.NullString) string {
-	if ns.Valid {
-		return ns.String
-	}
-	return ""
 }
