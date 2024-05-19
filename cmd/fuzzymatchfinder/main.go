@@ -68,8 +68,7 @@ func matchEntityHandler(c *gin.Context) {
 
 	// Standardize the address before finding matches
 	standardizedAddress, err := standardizer.StandardizeAddress(
-		req.FirstName+" "+req.LastName, "",
-		req.Street, req.City, req.State, req.ZipCode,
+		req.FirstName, req.LastName, req.PhoneNumber, req.Street, req.City, req.State, req.ZipCode,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to standardize address"})
@@ -108,15 +107,21 @@ func findMatches(req MatchRequest) []Candidate {
 			continue
 		}
 
-		candidate := Candidate{
-			ID:       id,
-			FullName: fmt.Sprintf("%s %s", firstName, lastName),
+		// Standardize candidate address
+		standardizedCandidateAddress, err := standardizer.StandardizeAddress(
+			firstName, lastName, phoneNumber, street, city, state, zipCode,
+		)
+		if err != nil {
+			fmt.Printf("Failed to standardize candidate address: %v\n", err)
+			continue
 		}
 
-		features := matcher.ExtractFeatures(req, candidate)
-		candidate.Score = scorer.Score(features)
-
-		candidates = append(candidates, candidate)
+		score := calculateScore(req, standardizedCandidateAddress)
+		candidates = append(candidates, Candidate{
+			ID:       id,
+			FullName: fmt.Sprintf("%s %s", firstName, lastName),
+			Score:    score,
+		})
 	}
 
 	// Sort and return top N candidates
@@ -127,4 +132,18 @@ func findMatches(req MatchRequest) []Candidate {
 		candidates = candidates[:req.TopN]
 	}
 	return candidates
+}
+
+func calculateScore(req MatchRequest, standardizedCandidateAddress string) float64 {
+	score := 0.0
+	standardizedReqAddress, err := standardizer.StandardizeAddress(
+		req.FirstName, req.LastName, req.PhoneNumber, req.Street, req.City, req.State,
+	)
+	if err != nil {
+		fmt.Printf("Failed to standardize request address: %v\n")
+		return score
+	}
+
+	score += 1.0 / (1.0 + float64(matcher.CosineSimilarity(standardizedReqAddress, standardizedCandidateAddress)))
+	return score
 }
