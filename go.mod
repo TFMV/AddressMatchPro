@@ -3,12 +3,17 @@ module github.com/TFMV/FuzzyMatchFinder
 go 1.22.3
 
 require (
-	github.com/agnivade/levenshtein v1.1.1
 	github.com/gin-gonic/gin v1.10.0
 	github.com/jackc/pgx/v5 v5.5.5
 )
 
 require (
+	github.com/hashicorp/errwrap v1.1.0 // indirect
+	github.com/hashicorp/go-multierror v1.1.1 // indirect
+)
+
+require (
+	github.com/Boostport/address v0.11.2
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect

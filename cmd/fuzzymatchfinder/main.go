@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 
-	"github.com/agnivade/levenshtein"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
+	"github.com/TFMV/FuzzyMatchFinder/standardizer"
 )
 
 type MatchRequest struct {
@@ -33,6 +36,7 @@ type Candidate struct {
 }
 
 var dbpool *pgxpool.Pool
+var scorer *matcher.Scorer
 
 func main() {
 	var err error
@@ -42,6 +46,12 @@ func main() {
 		return
 	}
 	defer dbpool.Close()
+
+	scorer, err = matcher.LoadModel("scorer_model.pkl")
+	if err != nil {
+		fmt.Printf("Unable to load model: %v\n", err)
+		return
+	}
 
 	r := gin.Default()
 	r.POST("/match-entity", matchEntityHandler)
@@ -56,12 +66,31 @@ func matchEntityHandler(c *gin.Context) {
 		return
 	}
 
+	// Standardize the address before finding matches
+	standardizedAddress, err := standardizer.StandardizeAddress(
+		req.FirstName+" "+req.LastName, "",
+		req.Street, req.City, req.State, req.ZipCode,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to standardize address"})
+		return
+	}
+
+	// Split the standardized address into components
+	components := strings.Fields(standardizedAddress)
+	if len(components) >= 6 {
+		req.Street = strings.Join(components[2:len(components)-4], " ")
+		req.City = components[len(components)-4]
+		req.State = components[len(components)-3]
+		req.ZipCode = components[len(components)-2]
+	}
+
 	matches := findMatches(req)
 	c.JSON(http.StatusOK, MatchResponse{Matches: matches})
 }
 
 func findMatches(req MatchRequest) []Candidate {
-	query := "SELECT id, first_name, last_name, phone_number, street, city, state, zip_code FROM my_table"
+	query := "SELECT id, first_name, last_name, phone_number, street, city, state, zip_code FROM customers"
 	rows, err := dbpool.Query(context.Background(), query)
 	if err != nil {
 		fmt.Printf("Query failed: %v\n", err)
@@ -79,12 +108,15 @@ func findMatches(req MatchRequest) []Candidate {
 			continue
 		}
 
-		score := calculateScore(req, firstName, lastName, phoneNumber, street, city, state, zipCode)
-		candidates = append(candidates, Candidate{
+		candidate := Candidate{
 			ID:       id,
 			FullName: fmt.Sprintf("%s %s", firstName, lastName),
-			Score:    score,
-		})
+		}
+
+		features := matcher.ExtractFeatures(req, candidate)
+		candidate.Score = scorer.Score(features)
+
+		candidates = append(candidates, candidate)
 	}
 
 	// Sort and return top N candidates
@@ -95,30 +127,4 @@ func findMatches(req MatchRequest) []Candidate {
 		candidates = candidates[:req.TopN]
 	}
 	return candidates
-}
-
-func calculateScore(req MatchRequest, firstName, lastName, phoneNumber, street, city, state, zipCode string) float64 {
-	score := 0.0
-	if req.FirstName != "" {
-		score += 1.0 / (1.0 + float64(levenshtein.ComputeDistance(req.FirstName, firstName)))
-	}
-	if req.LastName != "" {
-		score += 1.0 / (1.0 + float64(levenshtein.ComputeDistance(req.LastName, lastName)))
-	}
-	if req.PhoneNumber != "" {
-		score += 1.0 / (1.0 + float64(levenshtein.ComputeDistance(req.PhoneNumber, phoneNumber)))
-	}
-	if req.Street != "" {
-		score += 1.0 / (1.0 + float64(levenshtein.ComputeDistance(req.Street, street)))
-	}
-	if req.City != "" {
-		score += 1.0 / (1.0 + float64(levenshtein.ComputeDistance(req.City, city)))
-	}
-	if req.State != "" {
-		score += 1.0 / (1.0 + float64(levenshtein.ComputeDistance(req.State, state)))
-	}
-	if req.ZipCode != "" {
-		score += 1.0 / (1.0 + float64(levenshtein.ComputeDistance(req.ZipCode, zipCode)))
-	}
-	return score
 }
