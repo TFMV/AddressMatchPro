@@ -40,7 +40,7 @@ func (s *Scorer) Score(features []float64) float64 {
 }
 
 // dotProduct calculates the dot product of two vectors.
-func matcher.dotProduct(vec1, vec2 []float64) float64 {
+func dotProduct(vec1, vec2 []float64) float64 {
 	var result float64
 	for i, v := range vec1 {
 		result += v * vec2[i]
