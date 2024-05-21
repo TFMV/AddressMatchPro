@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/Boostport/address"
 	"github.com/TFMV/FuzzyMatchFinder/pkg/pca"
 	"github.com/TFMV/FuzzyMatchFinder/pkg/tfidf"
 	"github.com/jackc/pgx/v5"
@@ -14,10 +15,23 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
-// StandardizeAddress concatenates and standardizes address fields
-func standardizeAddress(firstName, lastName, street, city, state, zipCode string) string {
-	address := fmt.Sprintf("%s %s %s %s %s %s", firstName, lastName, street, city, state, zipCode)
-	return strings.ToUpper(strings.TrimSpace(address))
+// StandardizeAddress uses Boostport's address package to standardize the address fields
+func StandardizeAddress(name, organization, street, locality, state, postalCode string) (string, string, error) {
+	addr, err := address.NewValid(
+		address.WithCountry("US"),
+		address.WithName(name),
+		address.WithOrganization(organization),
+		address.WithStreetAddress([]string{strings.TrimSpace(street)}),
+		address.WithLocality(strings.TrimSpace(locality)),
+		address.WithAdministrativeArea(strings.TrimSpace(state)),
+		address.WithPostCode(strings.TrimSpace(postalCode)),
+	)
+	if err != nil {
+		return "", "", fmt.Errorf("error: %v, address: %s %s %s %s %s", err, street, locality, state, postalCode, name)
+	}
+	streetAddress := strings.Join(addr.StreetAddress, " ")
+	fullAddress := fmt.Sprintf("%s, %s, %s, %s, %s, %s", name, organization, streetAddress, locality, state, postalCode)
+	return streetAddress, fullAddress, nil
 }
 
 func main() {
@@ -36,22 +50,54 @@ func main() {
 	}
 	defer pool.Close()
 
-	// Query the customer data with 10% sampling
-	query := "SELECT first_name, last_name, street, city, state, zip_code FROM customers TABLESAMPLE SYSTEM (10)"
+	// Query the customer data with 2% sampling and valid fields only
+	query := `
+	    SELECT first_name, last_name, street, city, state, zip_code
+	    FROM customers
+	    WHERE state IS NOT NULL AND zip_code IS NOT NULL AND city IS NOT NULL
+	    ORDER BY random()
+	    LIMIT 200000
+	`
 	rows, err := pool.Query(context.Background(), query)
 	if err != nil {
 		log.Fatalf("Failed to execute query: %v", err)
 	}
 	defer rows.Close()
 
-	var entities []string
+	var streets, fullAddresses []string
 	for rows.Next() {
 		var firstName, lastName, street, city, state, zipCode pgtype.Text
 		if err := rows.Scan(&firstName, &lastName, &street, &city, &state, &zipCode); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
-		entity := standardizeAddress(firstName.String, lastName.String, street.String, city.String, state.String, zipCode.String)
-		entities = append(entities, entity)
+
+		// Trim spaces and check for empty fields
+		firstNameStr := strings.TrimSpace(firstName.String)
+		lastNameStr := strings.TrimSpace(lastName.String)
+		streetStr := strings.TrimSpace(street.String)
+		cityStr := strings.TrimSpace(city.String)
+		stateStr := strings.TrimSpace(state.String)
+		zipCodeStr := strings.TrimSpace(zipCode.String)
+
+		if cityStr == "" || stateStr == "" || zipCodeStr == "" {
+			log.Printf("Skipping address due to missing fields: %s, %s, %s, %s, %s", streetStr, cityStr, stateStr, zipCodeStr, firstNameStr)
+			continue
+		}
+
+		streetAddress, fullAddress, err := StandardizeAddress(
+			fmt.Sprintf("%s %s", firstNameStr, lastNameStr),
+			"",
+			streetStr,
+			cityStr,
+			stateStr,
+			zipCodeStr,
+		)
+		if err != nil {
+			log.Printf("Failed to standardize address for %s %s: %v", firstNameStr, lastNameStr, err)
+			continue
+		}
+		streets = append(streets, streetAddress)
+		fullAddresses = append(fullAddresses, fullAddress)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -59,13 +105,13 @@ func main() {
 	}
 
 	// Process the sampled data
-	processBatch(pool, entities)
+	processBatch(pool, streets, fullAddresses)
 }
 
-func processBatch(pool *pgxpool.Pool, entities []string) {
-	// Convert text data to TF-IDF vectors using custom vectorizer
+func processBatch(pool *pgxpool.Pool, streets, fullAddresses []string) {
+	// Convert street address data to TF-IDF vectors using custom vectorizer
 	vectorizer := tfidf.NewVectorizer()
-	X := vectorizer.FitTransform(entities)
+	X := vectorizer.FitTransform(streets)
 
 	// Convert to Dense matrix
 	numRows, numCols := len(X), len(X[0])
@@ -77,7 +123,7 @@ func processBatch(pool *pgxpool.Pool, entities []string) {
 	}
 	mat := mat.NewDense(numRows, numCols, matData)
 
-	// Perform PCA
+	// Perform PCA on the street address vectors
 	pcaModel := pca.NewPCA(10)
 	X_pca := pcaModel.FitTransform(mat)
 
@@ -90,7 +136,7 @@ func processBatch(pool *pgxpool.Pool, entities []string) {
 
 	var representativeEntities []string
 	for _, idx := range representativeIndices[:10] {
-		representativeEntities = append(representativeEntities, entities[idx])
+		representativeEntities = append(representativeEntities, fullAddresses[idx])
 	}
 
 	// Insert representative entities into the reference_entities table
