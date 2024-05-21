@@ -39,6 +39,22 @@ var dbpool *pgxpool.Pool
 var scorer *matcher.Scorer
 
 func main() {
+
+	// Create a new logger instance with the prefix "FuzzyMatchFinder"
+	logger := NewLogger("FuzzyMatchFinder")
+
+	// Log an informational message
+	logger.Info("Starting the FuzzyMatchFinder application")
+
+	// Log a debug message
+	logger.Debug("Connecting to the database")
+
+	// Log an error message
+	logger.Error("Failed to connect to the database: %v", err)
+
+	// Log a fatal error message and exit the program
+	logger.Fatal("Unable to recover from error: %v", err)
+
 	var err error
 	dbpool, err = pgxpool.Connect(context.Background(), "postgres://user:password@localhost:5432/mydb")
 	if err != nil {
@@ -137,7 +153,7 @@ func findMatches(req MatchRequest) []Candidate {
 func calculateScore(req MatchRequest, standardizedCandidateAddress string) float64 {
 	score := 0.0
 	standardizedReqAddress, err := standardizer.StandardizeAddress(
-		req.FirstName, req.LastName, req.PhoneNumber, req.Street, req.City, req.State,
+		req.FirstName+" "+req.LastName, nil, "US", req.PhoneNumber, req.Street, req.City, req.State,
 	)
 	if err != nil {
 		fmt.Printf("Failed to standardize request address: %v\n")
