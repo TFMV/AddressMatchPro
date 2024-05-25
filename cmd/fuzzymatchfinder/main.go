@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -39,22 +40,6 @@ var dbpool *pgxpool.Pool
 var scorer *matcher.Scorer
 
 func main() {
-
-	// Create a new logger instance with the prefix "FuzzyMatchFinder"
-	logger := NewLogger("FuzzyMatchFinder")
-
-	// Log an informational message
-	logger.Info("Starting the FuzzyMatchFinder application")
-
-	// Log a debug message
-	logger.Debug("Connecting to the database")
-
-	// Log an error message
-	logger.Error("Failed to connect to the database: %v", err)
-
-	// Log a fatal error message and exit the program
-	logger.Fatal("Unable to recover from error: %v", err)
-
 	var err error
 	dbpool, err = pgxpool.Connect(context.Background(), "postgres://user:password@localhost:5432/mydb")
 	if err != nil {
@@ -114,31 +99,44 @@ func findMatches(req MatchRequest) []Candidate {
 	defer rows.Close()
 
 	var candidates []Candidate
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
 	for rows.Next() {
-		var id int
-		var firstName, lastName, phoneNumber, street, city, state, zipCode string
-		err = rows.Scan(&id, &firstName, &lastName, &phoneNumber, &street, &city, &state, &zipCode)
-		if err != nil {
-			fmt.Printf("Row scan failed: %v\n", err)
-			continue
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var id int
+			var firstName, lastName, phoneNumber, street, city, state, zipCode string
+			err := rows.Scan(&id, &firstName, &lastName, &phoneNumber, &street, &city, &state, &zipCode)
+			if err != nil {
+				fmt.Printf("Row scan failed: %v\n", err)
+				return
+			}
 
-		// Standardize candidate address
-		standardizedCandidateAddress, err := standardizer.StandardizeAddress(
-			firstName, lastName, phoneNumber, street, city, state, zipCode,
-		)
-		if err != nil {
-			fmt.Printf("Failed to standardize candidate address: %v\n", err)
-			continue
-		}
+			// Standardize candidate address
+			standardizedCandidateAddress, err := standardizer.StandardizeAddress(
+				firstName, lastName, phoneNumber, street, city, state, zipCode,
+			)
+			if err != nil {
+				fmt.Printf("Failed to standardize candidate address: %v\n", err)
+				return
+			}
 
-		score := calculateScore(req, standardizedCandidateAddress)
-		candidates = append(candidates, Candidate{
-			ID:       id,
-			FullName: fmt.Sprintf("%s %s", firstName, lastName),
-			Score:    score,
-		})
+			score := calculateScore(req, standardizedCandidateAddress)
+			candidate := Candidate{
+				ID:       id,
+				FullName: fmt.Sprintf("%s %s", firstName, lastName),
+				Score:    score,
+			}
+
+			mu.Lock()
+			candidates = append(candidates, candidate)
+			mu.Unlock()
+		}()
 	}
+
+	wg.Wait()
 
 	// Sort and return top N candidates
 	sort.Slice(candidates, func(i, j int) bool {
@@ -153,10 +151,10 @@ func findMatches(req MatchRequest) []Candidate {
 func calculateScore(req MatchRequest, standardizedCandidateAddress string) float64 {
 	score := 0.0
 	standardizedReqAddress, err := standardizer.StandardizeAddress(
-		req.FirstName+" "+req.LastName, nil, "US", req.PhoneNumber, req.Street, req.City, req.State,
+		req.FirstName, req.LastName, req.PhoneNumber, req.Street, req.City, req.State, req.ZipCode,
 	)
 	if err != nil {
-		fmt.Printf("Failed to standardize request address: %v\n")
+		fmt.Printf("Failed to standardize request address: %v\n", err)
 		return score
 	}
 
