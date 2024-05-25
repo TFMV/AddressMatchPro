@@ -22,11 +22,11 @@ FuzzyMatchFinder is an advanced entity matching solution using machine learning 
 
 - [x] Develop approximate matching algorithms
 - [x] Integrate machine learning models for enhanced matching
-- [ ] Implement scoring system for match candidates
+- [x] Implement scoring system for match candidates
 
 ### Phase 3: API Development
 
-- [ ] Create endpoints for matching entities
+- [x] Create endpoints for matching entities
 - [ ] Implement middleware for request validation and logging
 - [ ] Develop utility functions for response formatting
 
