@@ -34,3 +34,15 @@ CREATE TABLE addresses (
     latitude DOUBLE PRECISION,
     longitude DOUBLE PRECISION
 );
+
+INSERT INTO public.reference_entities (ID, entity_value) VALUES
+(1, '742 evergreen ter'),
+(2, '1234 elm st apt 2b'),
+(3, '500 w madison st ste 1500'),
+(4, '2020 maple ave unit 12'),
+(5, '99 oak ridge dr'),
+(6, '1600 pennsylvania ave nw'),
+(7, '350 fifth ave fl 22'),
+(8, '47-20 bell blvd'),
+(9, '2000 richmond hwy'),
+(10, 'po box 9876');
