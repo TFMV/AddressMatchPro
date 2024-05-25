@@ -1,54 +1,95 @@
 package matcher
 
 import (
-	"math"
+	"context"
+	"fmt"
+	"log"
+	"sort"
 	"strings"
+
+	"github.com/TFMV/FuzzyMatchFinder/internal/standardizer"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Compute cosine similarity between two texts
-func CosineSimilarity(text1, text2 string) float64 {
-	vec1 := textToVector(text1)
-	vec2 := textToVector(text2)
-	return dotProduct(vec1, vec2) / (magnitude(vec1) * magnitude(vec2))
+// MatchRequest represents a matching request
+type MatchRequest struct {
+	FirstName   string `json:"first_name"`
+	LastName    string `json:"last_name"`
+	PhoneNumber string `json:"phone_number"`
+	Street      string `json:"street"`
+	City        string `json:"city"`
+	State       string `json:"state"`
+	ZipCode     string `json:"zip_code"`
+	TopN        int    `json:"top_n"`
 }
 
-func textToVector(text string) map[string]float64 {
-	vector := make(map[string]float64)
-	words := strings.Fields(text)
-	for _, word := range words {
-		vector[word]++
+// Candidate represents a potential match
+type Candidate struct {
+	ID       int     `json:"id"`
+	FullName string  `json:"full_name"`
+	Score    float64 `json:"score"`
+}
+
+// FindMatches finds the best matches for a given MatchRequest
+func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candidate {
+	standardizedAddress, err := standardizer.StandardizeAddress(
+		req.FirstName, "", req.Street, req.City, req.State, req.ZipCode,
+	)
+	if err != nil {
+		log.Printf("Failed to standardize address: %v\n", err)
+		return nil
 	}
-	return vector
-}
 
-func dotProduct(vec1, vec2 map[string]float64) float64 {
-	var result float64
-	for key, value := range vec1 {
-		if value2, found := vec2[key]; found {
-			result += value * value2
+	referenceEntities := LoadReferenceEntities(pool)
+	binaryKey := CalculateBinaryKey(referenceEntities, strings.ToLower(standardizedAddress))
+
+	query := "SELECT id, first_name, last_name, phone_number, street, city, state, zip_code FROM customers WHERE binary_key = $1"
+	rows, err := pool.Query(context.Background(), query, binaryKey)
+	if err != nil {
+		log.Printf("Query failed: %v\n", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var candidates []Candidate
+	for rows.Next() {
+		var id int
+		var firstName, lastName, phoneNumber, street, city, state, zipCode string
+		err = rows.Scan(&id, &firstName, &lastName, &phoneNumber, &street, &city, &state, &zipCode)
+		if err != nil {
+			log.Printf("Row scan failed: %v\n", err)
+			continue
 		}
-	}
-	return result
-}
 
-func magnitude(vec map[string]float64) float64 {
-	var result float64
-	for _, value := range vec {
-		result += value * value
-	}
-	return math.Sqrt(result)
-}
+		// Standardize candidate address
+		standardizedCandidateAddress, err := standardizer.StandardizeAddress(
+			firstName, lastName, street, city, state, zipCode,
+		)
+		if err != nil {
+			log.Printf("Failed to standardize candidate address: %v\n", err)
+			continue
+		}
 
-// ExtractFeatures extracts features from the candidate and request for scoring.
-func ExtractFeatures(req MatchRequest, candidate Candidate) []float64 {
-	// Example feature extraction: [cosine similarity, ...]
-	return []float64{
-		CosineSimilarity(req.FirstName, candidate.FullName),
-		CosineSimilarity(req.LastName, candidate.FullName),
-		CosineSimilarity(req.PhoneNumber, candidate.PhoneNumber),
-		CosineSimilarity(req.Street, candidate.Street),
-		CosineSimilarity(req.City, candidate.City),
-		CosineSimilarity(req.State, candidate.State),
-		CosineSimilarity(req.ZipCode, candidate.ZipCode),
+		features := ExtractFeatures(req, Candidate{
+			ID:       id,
+			FullName: fmt.Sprintf("%s %s", firstName, lastName),
+		}, standardizedCandidateAddress)
+		score := scorer.Score(features)
+		candidates = append(candidates, Candidate{
+			ID:       id,
+			FullName: fmt.Sprintf("%s %s", firstName, lastName),
+			Score:    score,
+		})
 	}
+
+	// Sort candidates by score in descending order
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Score > candidates[j].Score
+	})
+
+	if len(candidates) > req.TopN {
+		candidates = candidates[:req.TopN]
+	}
+
+	return candidates
 }
