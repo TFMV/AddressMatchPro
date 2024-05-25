@@ -32,9 +32,7 @@ type Candidate struct {
 
 // FindMatches finds the best matches for a given MatchRequest
 func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candidate {
-	standardizedAddress, err := standardizer.StandardizeAddress(
-		req.FirstName, "", req.Street, req.City, req.State, req.ZipCode,
-	)
+	standardizedAddress, err := standardizer.StandardizeAddress(req.Street)
 	if err != nil {
 		log.Printf("Failed to standardize address: %v\n", err)
 		return nil
@@ -62,9 +60,7 @@ func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candida
 		}
 
 		// Standardize candidate address
-		standardizedCandidateAddress, err := standardizer.StandardizeAddress(
-			firstName, lastName, street, city, state, zipCode,
-		)
+		standardizedCandidateAddress, err := standardizer.StandardizeAddress(street)
 		if err != nil {
 			log.Printf("Failed to standardize candidate address: %v\n", err)
 			continue

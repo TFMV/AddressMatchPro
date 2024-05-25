@@ -75,9 +75,7 @@ func ExtractFeatures(req MatchRequest, candidate Candidate, standardizedCandidat
 	features = append(features, phoneSimilarity)
 
 	// Example feature: address similarity
-	standardizedReqAddress, err := standardizer.StandardizeAddress(
-		req.FirstName, req.LastName, req.Street, req.City, req.State, req.ZipCode,
-	)
+	standardizedReqAddress, err := standardizer.StandardizeAddress(req.Street)
 	if err != nil {
 		log.Printf("Failed to standardize request address: %v\n", err)
 	}

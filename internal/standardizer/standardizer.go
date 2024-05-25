@@ -1,37 +1,48 @@
 package standardizer
 
 import (
+	"regexp"
 	"strings"
-
-	"github.com/Boostport/address"
 )
 
 // StandardizeAddress takes raw address components and returns a standardized address string.
-func StandardizeAddress(name, organization, street, locality, state, postalCode string) (string, error) {
-	addr, err := address.NewValid(
-		address.WithCountry("US"),
-		address.WithName(name),
-		address.WithOrganization(organization),
-		address.WithStreetAddress([]string{street}),
-		address.WithLocality(locality),
-		address.WithAdministrativeArea(state),
-		address.WithPostCode(postalCode),
-	)
-
-	if err != nil {
-		return "", err
+func StandardizeAddress(street string) (string, error) {
+	// Define common abbreviations
+	abbreviations := map[string]string{
+		"avenue":    "ave",
+		"boulevard": "blvd",
+		"circle":    "cir",
+		"court":     "ct",
+		"drive":     "dr",
+		"highway":   "hwy",
+		"lane":      "ln",
+		"place":     "pl",
+		"road":      "rd",
+		"street":    "st",
+		"terrace":   "ter",
+		"northwest": "nw",
+		"southeast": "se",
+		"southwest": "sw",
+		"northeast": "ne",
+		"unit":      "unit",
+		"ste":       "ste",
+		"apt":       "apt",
+		"floor":     "fl",
+		"po box":    "pobox", // Keep consistent with reference entities
 	}
 
-	formatter := address.DefaultFormatter{
-		Output: address.StringOutputter{},
+	// Normalize the street address by converting to lower case and trimming spaces
+	street = strings.ToLower(street)
+	street = strings.TrimSpace(street)
+
+	// Remove extra spaces within the street address
+	space := regexp.MustCompile(`\s+`)
+	street = space.ReplaceAllString(street, " ")
+
+	// Apply abbreviations
+	for longForm, shortForm := range abbreviations {
+		street = strings.ReplaceAll(street, longForm, shortForm)
 	}
 
-	lang := "en" // Use the English names of the administrative areas, localities and dependent localities where possible
-	standardizedAddress := formatter.Format(addr, lang)
-
-	// Remove any unwanted characters and trim spaces
-	standardizedAddress = strings.ReplaceAll(standardizedAddress, "\n", " ")
-	standardizedAddress = strings.TrimSpace(standardizedAddress)
-
-	return standardizedAddress, nil
+	return street, nil
 }
