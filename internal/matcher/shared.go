@@ -33,22 +33,22 @@ func LoadReferenceEntities(pool *pgxpool.Pool) []string {
 // Calculate the binary key for a given street address
 func CalculateBinaryKey(referenceEntities []string, street string) string {
 	var binaryKey strings.Builder
-	n := 3
+	n := 2 // Adjust the n-gram size to capture more variations
 
 	for _, referenceStreet := range referenceEntities {
 		similarity := ngramFrequencySimilarity(street, referenceStreet, n)
-		if similarity >= 0.7 {
+		if similarity >= 0.2 { // Further reduce the threshold to be less restrictive
 			binaryKey.WriteString("1")
 		} else {
 			binaryKey.WriteString("0")
 		}
-		if binaryKey.Len() >= 10 {
+		if binaryKey.Len() >= 20 { // Ensure the binary key is 20 characters long
 			break
 		}
 	}
 
-	// Ensure the binary key is exactly 10 characters long
-	for binaryKey.Len() < 10 {
+	// Ensure the binary key is exactly 20 characters long
+	for binaryKey.Len() < 20 {
 		binaryKey.WriteString("0")
 	}
 
@@ -95,7 +95,8 @@ func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, nu
 			for addr := range addressCh {
 				id := addr[0].(int)
 				street := addr[1].(string)
-				standardizedStreet, err := standardizer.StandardizeAddress("", "", street, "", "", "")
+
+				standardizedStreet, err := standardizer.StandardizeAddress(street)
 				if err != nil {
 					log.Printf("Failed to standardize address: %v\n", err)
 					continue

@@ -39,7 +39,7 @@ func loadConfig(configPath string) (*Config, error) {
 
 func main() {
 	// Load the configuration file
-	configPath := "config.yaml"
+	configPath := "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/config.yaml"
 	config, err := loadConfig(configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
