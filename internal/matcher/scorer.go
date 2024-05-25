@@ -2,8 +2,12 @@ package matcher
 
 import (
 	"encoding/gob"
+	"log"
 	"math"
 	"os"
+	"strings"
+
+	"github.com/TFMV/FuzzyMatchFinder/internal/standardizer"
 )
 
 // Scorer represents a machine learning model for scoring candidates.
@@ -54,11 +58,33 @@ func logistic(x float64) float64 {
 }
 
 // ExtractFeatures extracts features from the candidate and request for scoring.
-func ExtractFeatures(req MatchRequest, candidate Candidate) []float64 {
-	// Example feature extraction: [cosine similarity, ...]
-	return []float64{
-		CosineSimilarity(req.FirstName, candidate.FullName),
-		CosineSimilarity(req.LastName, candidate.FullName),
-		// Add more feature extractions as needed
+func ExtractFeatures(req MatchRequest, candidate Candidate, standardizedCandidateAddress string) []float64 {
+	var features []float64
+
+	// Example feature: name similarity
+	fullNameReq := strings.ToLower(strings.TrimSpace(req.FirstName + " " + req.LastName))
+	fullNameCand := strings.ToLower(strings.TrimSpace(candidate.FullName))
+	nameSimilarity := ngramFrequencySimilarity(fullNameReq, fullNameCand, 3)
+	features = append(features, nameSimilarity)
+
+	// Example feature: phone number similarity
+	phoneSimilarity := 0.0
+	if req.PhoneNumber == candidate.FullName {
+		phoneSimilarity = 1.0
 	}
+	features = append(features, phoneSimilarity)
+
+	// Example feature: address similarity
+	standardizedReqAddress, err := standardizer.StandardizeAddress(
+		req.FirstName, req.LastName, req.Street, req.City, req.State, req.ZipCode,
+	)
+	if err != nil {
+		log.Printf("Failed to standardize request address: %v\n", err)
+	}
+	addressSimilarity := ngramFrequencySimilarity(standardizedReqAddress, standardizedCandidateAddress, 3)
+	features = append(features, addressSimilarity)
+
+	// Add more features as needed
+
+	return features
 }
