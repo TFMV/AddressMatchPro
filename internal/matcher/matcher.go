@@ -54,9 +54,13 @@ type MatchRequest struct {
 
 // Candidate represents a potential match
 type Candidate struct {
-	ID       int     `json:"id"`
-	FullName string  `json:"full_name"`
-	Score    float64 `json:"score"`
+	ID         int     `json:"id"`
+	FullName   string  `json:"full_name"`
+	Score      float64 `json:"score"`
+	CustomerID int
+	Name       string
+	Street     string
+	Similarity float64
 }
 
 // FindMatches finds the best matches for a given MatchRequest
@@ -117,4 +121,58 @@ func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candida
 	}
 
 	return candidates
+}
+
+// FindPotentialMatches finds potential matches based on binary key or vector similarity
+func FindPotentialMatches(pool *pgxpool.Pool, binaryKey string, queryVector []float64) ([]Candidate, error) {
+	// Convert the query vector to a string
+	queryVectorStr := fmt.Sprintf("'{%s}'", join(queryVector, ", "))
+
+	// SQL query to find potential matches
+	query := `
+		SELECT c.customer_id, c.customer_fname || ' ' || c.customer_lname AS name, c.customer_street AS street, cv.vector_embedding <=> $2 AS similarity
+		FROM customer_vector_embedding cv
+		JOIN customers c ON cv.customer_id = c.customer_id
+		WHERE binary_key = $1
+		OR cv.vector_embedding <=> $2 < 0.8
+		ORDER BY similarity ASC
+		LIMIT 10;
+	`
+
+	// Execute the query
+	rows, err := pool.Query(context.Background(), query, binaryKey, queryVectorStr)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var candidates []Candidate
+
+	// Iterate through the rows and populate the candidates slice
+	for rows.Next() {
+		var candidate Candidate
+		if err := rows.Scan(&candidate.CustomerID, &candidate.Name, &candidate.Street, &candidate.Similarity); err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, candidate)
+	}
+
+	// Check for errors from iterating over rows.
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return candidates, nil
+}
+
+// join converts a slice of floats to a comma-separated string
+func join(slice []float64, sep string) string {
+	str := ""
+	for i, v := range slice {
+		if i > 0 {
+			str += sep
+		}
+		str += fmt.Sprintf("%f", v)
+	}
+	return str
 }
