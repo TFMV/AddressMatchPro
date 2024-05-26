@@ -70,7 +70,7 @@ func calculateIDF(totalDocs int, docFreq map[string]int) map[string]float64 {
 }
 
 func GenerateTFIDF(pool *pgxpool.Pool) {
-	rows, err := pool.Query(context.Background(), "SELECT id, lower(first_name) || ' ' || lower(last_name) as name, lower(street) as street FROM customers")
+	rows, err := pool.Query(context.Background(), "SELECT customer_id as id, lower(customer_fname) || ' ' || lower(customer_lname) as name, lower(customer_street) as street FROM customers")
 	if err != nil {
 		log.Fatal(err)
 	}
