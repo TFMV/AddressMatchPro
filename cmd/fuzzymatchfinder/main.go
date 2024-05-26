@@ -32,9 +32,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
-
 	"log"
+	"os"
+	"os/exec"
 
 	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -111,7 +111,12 @@ func main() {
 	matcher.GenerateTFIDF(pool)
 	fmt.Println("TF/IDF vectors generated successfully")
 
-	// Insert vector embeddings
-	matcher.InsertEmbeddings(pool)
-	fmt.Println("Vector embeddings inserted successfully")
+	// Call the Python script to generate embeddings
+	cmd := exec.Command("python", "../python-ml/generate_embeddings.py")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Fatalf("Failed to run Python script: %v\nOutput: %s", err, output)
+	}
+	fmt.Println("Python script executed successfully")
+	fmt.Println(string(output))
 }
