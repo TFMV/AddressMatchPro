@@ -101,3 +101,8 @@ values(1, 'street address');
 
 insert into entity_types
 values(2, 'customer full name');
+
+create table customer_vector_embedding (
+    customer_id int primary key ,
+    vector_embedding vector(300)
+);
