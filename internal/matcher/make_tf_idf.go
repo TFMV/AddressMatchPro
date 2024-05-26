@@ -33,7 +33,6 @@ import (
 	"context"
 	"log"
 	"math"
-	"strings"
 	"sync"
 
 	"github.com/TFMV/FuzzyMatchFinder/internal/standardizer"
@@ -171,52 +170,44 @@ func GenerateTFIDF(pool *pgxpool.Pool) {
 
 	insertIDF := "INSERT INTO tokens_idf (entity_type_id, ngram_token, ngram_idf) VALUES ($1, $2, $3)"
 	batchSize := 1000
-	idfBatch := make([]string, 0, batchSize)
-	args := make([]interface{}, 0, batchSize*3)
 
+	// Insert IDF values in batches
+	idfCount := 0
 	for token, idfValue := range idf {
-		idfBatch = append(idfBatch, insertIDF)
-		args = append(args, 2, token, idfValue)
-
-		if len(idfBatch) == batchSize {
-			_, err := tx.Exec(ctx, strings.Join(idfBatch, "; "), args...)
+		_, err := tx.Exec(ctx, insertIDF, 2, token, idfValue) // EntityTypeID 2 for customer full name
+		if err != nil {
+			log.Fatal(err)
+		}
+		idfCount++
+		if idfCount%batchSize == 0 {
+			if err := tx.Commit(ctx); err != nil {
+				log.Fatal(err)
+			}
+			tx, err = pool.Begin(ctx)
 			if err != nil {
 				log.Fatal(err)
 			}
-			idfBatch = idfBatch[:0]
-			args = args[:0]
-		}
-	}
-
-	if len(idfBatch) > 0 {
-		_, err := tx.Exec(ctx, strings.Join(idfBatch, "; "), args...)
-		if err != nil {
-			log.Fatal(err)
 		}
 	}
 
 	insertCustomerTokens := "INSERT INTO customer_tokens (customer_id, entity_type_id, ngram_token, ngram_frequency) VALUES ($1, $2, $3, $4)"
-	tokenBatch := make([]string, 0, batchSize)
-	tokenArgs := make([]interface{}, 0, batchSize*4)
+	tokenCount := 0
 
+	// Insert customer tokens in batches
 	for _, ct := range customerTokens {
-		tokenBatch = append(tokenBatch, insertCustomerTokens)
-		tokenArgs = append(tokenArgs, ct.CustomerID, ct.EntityType, ct.Token, ct.Frequency)
-
-		if len(tokenBatch) == batchSize {
-			_, err := tx.Exec(ctx, strings.Join(tokenBatch, "; "), tokenArgs...)
+		_, err := tx.Exec(ctx, insertCustomerTokens, ct.CustomerID, ct.EntityType, ct.Token, ct.Frequency)
+		if err != nil {
+			log.Fatal(err)
+		}
+		tokenCount++
+		if tokenCount%batchSize == 0 {
+			if err := tx.Commit(ctx); err != nil {
+				log.Fatal(err)
+			}
+			tx, err = pool.Begin(ctx)
 			if err != nil {
 				log.Fatal(err)
 			}
-			tokenBatch = tokenBatch[:0]
-			tokenArgs = tokenArgs[:0]
-		}
-	}
-
-	if len(tokenBatch) > 0 {
-		_, err := tx.Exec(ctx, strings.Join(tokenBatch, "; "), tokenArgs...)
-		if err != nil {
-			log.Fatal(err)
 		}
 	}
 
