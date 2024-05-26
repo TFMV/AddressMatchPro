@@ -106,7 +106,7 @@ func InsertBatch(pool *pgxpool.Pool, batch [][2]interface{}) {
 
 // Process customer addresses and generate binary keys
 func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, numWorkers int) {
-	rows, err := pool.Query(context.Background(), "SELECT id, street FROM customers")
+	rows, err := pool.Query(context.Background(), "SELECT customer_id as id, customer_street as street FROM customers")
 	if err != nil {
 		log.Fatalf("Query failed: %v\n", err)
 	}

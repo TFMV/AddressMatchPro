@@ -13,7 +13,7 @@ conn = psycopg2.connect(
 )
 
 # Query to extract street values from the database
-query = "SELECT street FROM public.customers"
+query = "SELECT customer_street as street FROM public.customers"
 df_customer = pd.read_sql_query(query, conn)
 
 # Close the database connection
