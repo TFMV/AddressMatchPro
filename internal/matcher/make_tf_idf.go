@@ -100,7 +100,8 @@ func GenerateTFIDF(pool *pgxpool.Pool) {
 	}
 
 	totalDocs := len(customers)
-	docFreq := make(map[string]int)
+	docFreqName := make(map[string]int)
+	docFreqStreet := make(map[string]int)
 	customerTokens := []struct {
 		CustomerID int
 		EntityType int
@@ -118,22 +119,24 @@ func GenerateTFIDF(pool *pgxpool.Pool) {
 			defer wg.Done()
 			sem <- struct{}{}
 
-			tokenFreq := make(map[string]int)
+			nameTokenFreq := make(map[string]int)
+			streetTokenFreq := make(map[string]int)
 
 			// Tokenize and count tokens for name
 			nameTokens := tokenize(c.Name)
 			for _, token := range nameTokens {
-				tokenFreq[token]++
+				nameTokenFreq[token]++
 			}
 
 			// Tokenize and count tokens for street
 			streetTokens := tokenize(c.Street)
 			for _, token := range streetTokens {
-				tokenFreq[token]++
+				streetTokenFreq[token]++
 			}
 
 			mu.Lock()
-			for token, freq := range tokenFreq {
+			// Add name tokens to customerTokens and docFreqName
+			for token, freq := range nameTokenFreq {
 				customerTokens = append(customerTokens, struct {
 					CustomerID int
 					EntityType int
@@ -145,7 +148,23 @@ func GenerateTFIDF(pool *pgxpool.Pool) {
 					Token:      token,
 					Frequency:  freq,
 				})
-				docFreq[token]++
+				docFreqName[token]++
+			}
+
+			// Add street tokens to customerTokens and docFreqStreet
+			for token, freq := range streetTokenFreq {
+				customerTokens = append(customerTokens, struct {
+					CustomerID int
+					EntityType int
+					Token      string
+					Frequency  int
+				}{
+					CustomerID: c.ID,
+					EntityType: 1, // EntityTypeID 1 for street address
+					Token:      token,
+					Frequency:  freq,
+				})
+				docFreqStreet[token]++
 			}
 			mu.Unlock()
 			<-sem
@@ -154,7 +173,8 @@ func GenerateTFIDF(pool *pgxpool.Pool) {
 
 	wg.Wait()
 
-	idf := calculateIDF(totalDocs, docFreq)
+	idfName := calculateIDF(totalDocs, docFreqName)
+	idfStreet := calculateIDF(totalDocs, docFreqStreet)
 
 	ctx := context.Background()
 	tx, err := pool.Begin(ctx)
@@ -170,10 +190,28 @@ func GenerateTFIDF(pool *pgxpool.Pool) {
 
 	insertIDF := "INSERT INTO tokens_idf (entity_type_id, ngram_token, ngram_idf) VALUES ($1, $2, $3)"
 	batchSize := 1000
-
-	// Insert IDF values in batches
 	idfCount := 0
-	for token, idfValue := range idf {
+
+	// Insert IDF values for street address tokens in batches
+	for token, idfValue := range idfStreet {
+		_, err := tx.Exec(ctx, insertIDF, 1, token, idfValue) // EntityTypeID 1 for street address
+		if err != nil {
+			log.Fatal(err)
+		}
+		idfCount++
+		if idfCount%batchSize == 0 {
+			if err := tx.Commit(ctx); err != nil {
+				log.Fatal(err)
+			}
+			tx, err = pool.Begin(ctx)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
+
+	// Insert IDF values for customer full name tokens in batches
+	for token, idfValue := range idfName {
 		_, err := tx.Exec(ctx, insertIDF, 2, token, idfValue) // EntityTypeID 2 for customer full name
 		if err != nil {
 			log.Fatal(err)
