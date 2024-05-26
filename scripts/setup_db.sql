@@ -35,27 +35,16 @@ CREATE TABLE addresses (
     longitude DOUBLE PRECISION
 );
 
-INSERT INTO public.reference_entities (ID, entity_value) VALUES
-(1, '742 evergreen ter'),
-(2, '1234 elm st apt 2b'),
-(3, '500 w madison st ste 1500'),
-(4, '2020 maple ave unit 12'),
-(5, '99 oak ridge dr'),
-(6, '1600 pennsylvania ave nw'),
-(7, '350 fifth ave fl 22'),
-(8, '47-20 bell blvd'),
-(9, '2000 richmond hwy'),
-(10, 'po box 9876'),
-(11, '100 main st'),
-(12, '456 broadway ave'),
-(13, '789 market st'),
-(14, '321 park blvd'),
-(15, '654 oak st'),
-(16, '987 maple rd'),
-(17, '135 elm dr'),
-(18, '246 pine ln'),
-(19, '357 cedar ct'),
-(20, '468 birch pl');
+INSERT INTO public.reference_entities (ID, entity_value) VALUES (1, 'WATERTOWN STREET 25-W');
+INSERT INTO public.reference_entities (ID, entity_value) VALUES (2, 'AMERICAN LEGION HIGHWAY C');
+INSERT INTO public.reference_entities (ID, entity_value) VALUES (3, 'WEST ADAMS STREET 2');
+INSERT INTO public.reference_entities (ID, entity_value) VALUES (4, 'TINA ST DUPL 1');
+INSERT INTO public.reference_entities (ID, entity_value) VALUES (5, 'BEACON STREET 1');
+INSERT INTO public.reference_entities (ID, entity_value) VALUES (6, 'WINTHROP AVENUE 102 WINTHROP AVE');
+INSERT INTO public.reference_entities (ID, entity_value) VALUES (7, 'THURLOW AVENUE 2');
+INSERT INTO public.reference_entities (ID, entity_value) VALUES (8, 'MIRROR LAKE DR DUPL A');
+INSERT INTO public.reference_entities (ID, entity_value) VALUES (9, 'CLOCKTOWER DRIVE 4204');
+INSERT INTO public.reference_entities (ID, entity_value) VALUES (10, 'STEARNS HILL ROAD 1');
 
 
 SELECT 
@@ -87,3 +76,28 @@ GROUP BY
     position_11, position_12, position_13, position_14, position_15,
     position_16, position_17, position_18, position_19, position_20
 ORDER BY count DESC;
+
+
+create table entity_types (
+    entity_type_id int,
+    entity_type_desc text
+);
+
+create table tokens_idf (
+    entity_type_id int,
+    ngram_token text,
+    ngram_idf float8
+);
+
+create table customer_tokens (
+    customer_id int,
+    entity_type_id int,
+    ngram_token text,
+    ngram_frequency int
+);
+
+insert into entity_types
+values(1, 'street address');
+
+insert into entity_types
+values(2, 'customer full name');
