@@ -73,6 +73,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+	fmt.Println("Config loaded successfully")
 
 	// Create the database connection string
 	databaseUrl := fmt.Sprintf(
@@ -96,13 +97,21 @@ func main() {
 		log.Fatalf("Unable to create connection pool: %v\n", err)
 	}
 	defer pool.Close()
+	fmt.Println("Database connection pool created successfully")
 
 	// Load reference entities once
 	referenceEntities := matcher.LoadReferenceEntities(pool)
+	fmt.Println("Reference entities loaded successfully")
 
 	// Process customer addresses and generate binary keys with concurrency
 	matcher.ProcessCustomerAddresses(pool, referenceEntities, 10)
+	fmt.Println("Customer addresses processed and binary keys generated successfully")
 
 	// Generate TF/IDF vectors
 	matcher.GenerateTFIDF(pool)
+	fmt.Println("TF/IDF vectors generated successfully")
+
+	// Insert vector embeddings
+	matcher.InsertEmbeddings(pool)
+	fmt.Println("Vector embeddings inserted successfully")
 }
