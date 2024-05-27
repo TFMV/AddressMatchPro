@@ -8,39 +8,70 @@ Welcome to FuzzyMatchFinder! This project is currently under development, but we
 
 ## Project Overview
 
-FuzzyMatchFinder is an advanced entity matching solution using machine learning to provide approximate matching.
+FuzzyMatchFinder is an advanced entity matching solution leveraging machine learning to provide approximate matching. Our approach combines traditional algorithms with modern machine learning techniques to deliver high-accuracy matching results.
+
+## Approach
+
+### Data Ingestion and Preparation
+
+- **Data Loading:** Load customer data from a provided dataset into a new table, `customer_matching`, in Postgres.
+- **Data Partitioning:** Use `run_id` to manage different data loads and ensure efficient processing and querying.
+
+### Core Matching Logic
+
+- **Binary Key Generation:** Generate binary keys for addresses using reference entities and n-gram frequency similarity.
+- **TF-IDF Calculation:** Calculate term frequency-inverse document frequency (TF-IDF) vectors for customer data to enhance matching precision.
+- **Vector Embeddings:** Generate vector embeddings for customer data using spaCy, leveraging both address data and other attributes.
+
+### API Development
+
+- **Single Record Matching:** Develop an API endpoint to match a single record against the candidate space.
+- **Batch Record Matching:** Develop an API endpoint to match multiple records provided in a CSV file against the candidate space.
+- **Efficient Querying:** Utilize optimized SQL queries to retrieve potential matches based on binary keys or vector similarity.
+
+### Integration with Machine Learning
+
+- **ML Model Integration:** Integrate machine learning models to further enhance the accuracy of the matching process.
+- **Scoring System:** Implement a scoring system to rank match candidates based on similarity scores.
 
 ## Major Goals and Milestones
 
 ### Phase 1: Initial Setup
 
-- [x] Set up the project structure
-- [x] Establish database connection with Postgres using pgx/v5
-- [x] Implement basic API endpoints
+- [x] Set up the project structure.
+- [x] Establish database connection with Postgres using pgx/v5.
+- [x] Implement basic API endpoints.
+- [x] Create `customer_matching` table and load initial data.
 
 ### Phase 2: Core Matching Logic
 
-- [x] Develop approximate matching algorithms
-- [x] Integrate machine learning models for enhanced matching
-- [x] Implement scoring system for match candidates
+- [x] Develop approximate matching algorithms.
+- [x] Generate binary keys for customer addresses.
+- [x] Implement n-gram frequency similarity for binary key generation.
+- [x] Calculate and insert TF-IDF vectors.
+- [x] Generate vector embeddings using Python and spaCy.
+- [x] Store and manage `run_id` for different data loads.
+- [x] Clear old candidates from tables using `run_id`.
 
 ### Phase 3: API Development
 
-- [x] Create endpoints for matching entities
-- [ ] Implement middleware for request validation and logging
-- [ ] Develop utility functions for response formatting
+- [x] Create endpoints for matching entities.
+- [x] Develop endpoint for single record matching.
+- [x] Develop endpoint for batch record matching.
+- [ ] Implement middleware for request validation and logging.
+- [ ] Develop utility functions for response formatting.
 
 ### Phase 4: Testing and Optimization
 
-- [ ] Write unit and integration tests
-- [ ] Optimize matching algorithms for performance
-- [ ] Perform load testing and scalability improvements
+- [ ] Write unit and integration tests.
+- [ ] Optimize matching algorithms for performance.
+- [ ] Perform load testing and scalability improvements.
 
 ### Phase 5: Deployment
 
-- [ ] Set up CI/CD pipeline
-- [ ] Deploy the API to Google Cloud Run
-- [ ] Monitor and maintain the service
+- [ ] Set up CI/CD pipeline.
+- [ ] Deploy the API to Google Cloud Run.
+- [ ] Monitor and maintain the service.
 
 ## Get Involved
 
@@ -52,4 +83,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-Stay tuned for more updates! 🚀
+## Author
+
+Thomas F McGeehan V
