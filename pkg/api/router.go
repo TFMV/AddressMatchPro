@@ -36,6 +36,7 @@ import (
 
 // SetupRoutes sets up the HTTP routes for the API
 func SetupRoutes(router *gin.Engine, pool *pgxpool.Pool) {
+	router.GET("/healthz", HealthCheckHandler())
 	router.POST("/match-single", MatchSingleHandler(pool))
 	router.POST("/match-batch", MatchBatchHandler(pool))
 }

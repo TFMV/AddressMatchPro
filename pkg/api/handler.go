@@ -32,8 +32,10 @@ package api
 import (
 	"encoding/csv"
 	"net/http"
+	"time"
 
 	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
+	"github.com/TFMV/FuzzyMatchFinder/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -43,7 +45,7 @@ func MatchSingleHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req matcher.MatchRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			utils.SendError(c.Writer, http.StatusBadRequest, err)
 			return
 		}
 
@@ -57,7 +59,7 @@ func MatchSingleHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 		// Find matches
 		candidates := matcher.FindMatches(req, matcher.NewScorer(), pool)
 
-		c.JSON(http.StatusOK, candidates)
+		utils.SendJSON(c.Writer, http.StatusOK, "Matches found successfully", candidates)
 	}
 }
 
@@ -66,13 +68,13 @@ func MatchBatchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		file, err := c.FormFile("file")
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			utils.SendError(c.Writer, http.StatusBadRequest, err)
 			return
 		}
 
 		f, err := file.Open()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			utils.SendError(c.Writer, http.StatusInternalServerError, err)
 			return
 		}
 		defer f.Close()
@@ -82,7 +84,7 @@ func MatchBatchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 
 		records, err := csv.NewReader(f).ReadAll()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			utils.SendError(c.Writer, http.StatusInternalServerError, err)
 			return
 		}
 
@@ -106,6 +108,17 @@ func MatchBatchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 		// Find matches for each record
 		candidates := matcher.FindMatchesBatch(runID, matcher.NewScorer(), pool)
 
-		c.JSON(http.StatusOK, candidates)
+		utils.SendJSON(c.Writer, http.StatusOK, "Batch matches found successfully", candidates)
+	}
+}
+
+// HealthCheckHandler handles health check requests
+func HealthCheckHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		zuluTime := time.Now().UTC().Format(time.RFC3339)
+		c.JSON(http.StatusOK, gin.H{
+			"status":   "OK",
+			"zuluTime": zuluTime,
+		})
 	}
 }

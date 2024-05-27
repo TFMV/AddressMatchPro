@@ -17,26 +17,26 @@ COPY . .
 RUN go build -o fuzzymatchfinder ./cmd/fuzzymatchfinder
 
 # Stage 2: Create a minimal image with the Go binary
-FROM alpine:latest
-
-# Install necessary packages
-RUN apk add --no-cache python3 py3-pip postgresql-dev build-base gfortran openblas-dev
-RUN apk add --no-cache python3-dev py3-setuptools gcc musl-dev libffi-dev
+FROM python:3.10-slim-buster
 
 # Set the working directory
 WORKDIR /app
 
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc g++ postgresql-server-dev-all && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy the binary from the builder stage
 COPY --from=builder /app/fuzzymatchfinder .
+COPY config.yaml . 
 
-# Copy the Python ML script and requirements
-COPY --from=builder /app/python-ml /app/python-ml
+# Create a virtual environment and install Python dependencies
+RUN python3 -m venv /app/venv && \
+    /app/venv/bin/pip install --no-cache --upgrade pip setuptools wheel
 
-# Create and activate a virtual environment for Python
-RUN python3 -m venv /app/venv
-ENV PATH="/app/venv/bin:$PATH"
-
-# Install Python dependencies
+# Copy Python requirements and install dependencies
+COPY python-ml/requirements.txt /app/python-ml/requirements.txt
 RUN /app/venv/bin/pip install --no-cache-dir -r /app/python-ml/requirements.txt
 
 # Expose the port on which the service will run
