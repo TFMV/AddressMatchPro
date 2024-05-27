@@ -32,6 +32,7 @@ package handlers
 import (
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
@@ -56,6 +57,7 @@ func MatchBatchHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// Process each record
 		for _, record := range records {
 			req := matcher.MatchRequest{
 				FirstName:   record[0],
@@ -69,8 +71,17 @@ func MatchBatchHandler(pool *pgxpool.Pool) http.HandlerFunc {
 				RunID:       runID,
 			}
 
-			// Process the record and generate keys/vectors
 			matcher.ProcessSingleRecord(pool, req)
+		}
+
+		// Generate TF/IDF vectors for the batch
+		matcher.GenerateTFIDF(pool, runID)
+
+		// Insert vector embeddings using Python script
+		scriptPath := "./python-ml/generate_embeddings.py"
+		if err := matcher.GenerateEmbeddingsPythonScript(scriptPath, runID); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to generate embeddings: %v", err), http.StatusInternalServerError)
+			return
 		}
 
 		// Find matches for each record

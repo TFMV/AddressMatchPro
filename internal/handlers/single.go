@@ -10,7 +10,7 @@
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
 //
-// The above copyright notice and this permission notice shall be included in all
+// The above copyright notice shall be included in all
 // copies or substantial portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -30,12 +30,9 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os/exec"
-	"strconv"
 
 	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -75,28 +72,4 @@ func MatchSingleHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(candidates)
 	}
-}
-
-func clearOldCandidates(pool *pgxpool.Pool, runID int) {
-	tables := []string{
-		"customer_keys",
-		"customer_tokens",
-		"tokens_idf",
-		"customer_vector_embedding",
-	}
-	for _, table := range tables {
-		query := fmt.Sprintf("DELETE FROM %s WHERE run_id = $1", table)
-		if _, err := pool.Exec(context.Background(), query, runID); err != nil {
-			fmt.Printf("Failed to clear old candidates from %s: %v\n", table, err)
-		}
-	}
-}
-
-func generateEmbeddingsPythonScript(scriptPath string, runID int) error {
-	cmd := exec.Command("python3", scriptPath, strconv.Itoa(runID))
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error running Python script: %v, output: %s", err, string(output))
-	}
-	return nil
 }

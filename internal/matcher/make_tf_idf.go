@@ -67,8 +67,8 @@ func calculateIDF(totalDocs int, docFreq map[string]int) map[string]float64 {
 	return idf
 }
 
-func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
-	rows, err := pool.Query(context.Background(), "SELECT customer_id, lower(customer_fname) || ' ' || lower(customer_lname) as name, lower(customer_street) as street FROM customers")
+func generateCandidateIDF(pool *pgxpool.Pool) map[string]float64 {
+	rows, err := pool.Query(context.Background(), "SELECT customer_id, lower(first_name) || ' ' || lower(last_name) as name, lower(street) as street FROM customer_matching WHERE run_id = 0")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -96,12 +96,82 @@ func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
 
 	totalDocs := len(customers)
 	docFreq := make(map[string]int)
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 50)
+
+	for _, customer := range customers {
+		wg.Add(1)
+		go func(c Customer) {
+			defer wg.Done()
+			sem <- struct{}{}
+
+			nameTokens := tokenize(c.Name)
+			streetTokens := tokenize(c.Street)
+
+			nameTokenFreq := make(map[string]int, len(nameTokens))
+			streetTokenFreq := make(map[string]int, len(streetTokens))
+
+			for _, token := range nameTokens {
+				nameTokenFreq[token]++
+			}
+			for _, token := range streetTokens {
+				streetTokenFreq[token]++
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			for token := range nameTokenFreq {
+				docFreq[token]++
+			}
+			for token := range streetTokenFreq {
+				docFreq[token]++
+			}
+			<-sem
+		}(customer)
+	}
+
+	wg.Wait()
+
+	return calculateIDF(totalDocs, docFreq)
+}
+
+func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
+	idf := generateCandidateIDF(pool)
+	rows, err := pool.Query(context.Background(), "SELECT customer_id, lower(first_name) || ' ' || lower(last_name) as name, lower(street) as street FROM customer_matching WHERE run_id = $1", runID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	type Customer struct {
+		ID     int
+		Name   string
+		Street string
+	}
+
+	var customers []Customer
+	for rows.Next() {
+		var customer Customer
+		if err := rows.Scan(&customer.ID, &customer.Name, &customer.Street); err != nil {
+			log.Fatal(err)
+		}
+		customer.Street = standardizeStreet(customer.Street)
+		customers = append(customers, customer)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Fatal(err)
+	}
+
 	customerTokens := make([]struct {
 		CustomerID int
 		EntityType int
 		Token      string
-		Frequency  int
-	}, 0, totalDocs*10)
+		TfIdf      float64
+	}, 0, len(customers)*10)
 
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -130,40 +200,40 @@ func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
 			defer mu.Unlock()
 
 			for token, freq := range nameTokenFreq {
+				tf := float64(freq) / float64(len(nameTokens))
+				tfIdf := tf * idf[token]
 				customerTokens = append(customerTokens, struct {
 					CustomerID int
 					EntityType int
 					Token      string
-					Frequency  int
+					TfIdf      float64
 				}{
 					CustomerID: c.ID,
 					EntityType: 2,
 					Token:      token,
-					Frequency:  freq,
+					TfIdf:      tfIdf,
 				})
-				docFreq[token]++
 			}
 			for token, freq := range streetTokenFreq {
+				tf := float64(freq) / float64(len(streetTokens))
+				tfIdf := tf * idf[token]
 				customerTokens = append(customerTokens, struct {
 					CustomerID int
 					EntityType int
 					Token      string
-					Frequency  int
+					TfIdf      float64
 				}{
 					CustomerID: c.ID,
 					EntityType: 1,
 					Token:      token,
-					Frequency:  freq,
+					TfIdf:      tfIdf,
 				})
-				docFreq[token]++
 			}
 			<-sem
 		}(customer)
 	}
 
 	wg.Wait()
-
-	idf := calculateIDF(totalDocs, docFreq)
 
 	ctx := context.Background()
 	tx, err := pool.Begin(ctx)
@@ -172,32 +242,12 @@ func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
 	}
 	defer tx.Rollback(ctx)
 
-	insertIDF := "INSERT INTO tokens_idf (entity_type_id, ngram_token, ngram_idf, run_id) VALUES ($1, $2, $3, $4)"
-	batchSize := 1000
-	idfCount := 0
-
-	for token, idfValue := range idf {
-		_, err := tx.Exec(ctx, insertIDF, 1, token, idfValue, runID)
-		if err != nil {
-			log.Fatal(err)
-		}
-		idfCount++
-		if idfCount%batchSize == 0 {
-			if err := tx.Commit(ctx); err != nil {
-				log.Fatal(err)
-			}
-			tx, err = pool.Begin(ctx)
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-	}
-
-	insertCustomerTokens := "INSERT INTO customer_tokens (customer_id, entity_type_id, ngram_token, ngram_frequency, run_id) VALUES ($1, $2, $3, $4, $5)"
+	insertCustomerTokens := "INSERT INTO customer_tokens (customer_id, entity_type_id, ngram_token, ngram_tfidf, run_id) VALUES ($1, $2, $3, $4, $5)"
 	tokenCount := 0
+	batchSize := 1000
 
 	for _, ct := range customerTokens {
-		_, err := tx.Exec(ctx, insertCustomerTokens, ct.CustomerID, ct.EntityType, ct.Token, ct.Frequency, runID)
+		_, err := tx.Exec(ctx, insertCustomerTokens, ct.CustomerID, ct.EntityType, ct.Token, ct.TfIdf, runID)
 		if err != nil {
 			log.Fatal(err)
 		}
