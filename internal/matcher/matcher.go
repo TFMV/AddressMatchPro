@@ -21,7 +21,7 @@ type MatchRequest struct {
 	ZipCode     string `json:"zip_code"`
 	TopN        int    `json:"top_n"`
 	RunID       int    `json:"run_id"`
-	ID          int    `json:"id"` // Added missing field
+	ID          int    `json:"id"`
 	ScriptPath  string `json:"script_path"`
 }
 
@@ -34,7 +34,7 @@ type Candidate struct {
 	Name        string
 	Street      string
 	Similarity  float64
-	FirstName   string `json:"first_name"` // Added missing fields
+	FirstName   string `json:"first_name"`
 	LastName    string `json:"last_name"`
 	PhoneNumber string `json:"phone_number"`
 	City        string `json:"city"`
@@ -190,11 +190,6 @@ func FindPotentialMatches(pool *pgxpool.Pool, binaryKey string, queryVector []fl
 	}
 
 	return candidates, nil
-}
-
-// NewScorer returns a new instance of Scorer
-func NewScorer() *Scorer {
-	return &Scorer{}
 }
 
 // FindMatchesBatch finds matches for a batch of records by run ID

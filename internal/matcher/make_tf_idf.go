@@ -10,7 +10,7 @@
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
 //
-// The above copyright notice shall be included in all
+// The above copyright notice and this permission notice shall be included in all
 // copies or substantial portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -52,7 +52,7 @@ func tokenize(text string) []string {
 	if err != nil {
 		log.Fatal(err)
 	}
-	tokens := []string{}
+	tokens := make([]string, 0, len(doc.Tokens()))
 	for _, tok := range doc.Tokens() {
 		tokens = append(tokens, tok.Text)
 	}
@@ -60,15 +60,15 @@ func tokenize(text string) []string {
 }
 
 func calculateIDF(totalDocs int, docFreq map[string]int) map[string]float64 {
-	idf := make(map[string]float64)
+	idf := make(map[string]float64, len(docFreq))
 	for token, freq := range docFreq {
 		idf[token] = math.Log(float64(totalDocs) / float64(freq))
 	}
 	return idf
 }
 
-func GenerateTFIDF(pool *pgxpool.Pool, run_id int) {
-	rows, err := pool.Query(context.Background(), "SELECT customer_id as id, lower(customer_fname) || ' ' || lower(customer_lname) as name, lower(customer_street) as street FROM customers")
+func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
+	rows, err := pool.Query(context.Background(), "SELECT customer_id, lower(customer_fname) || ' ' || lower(customer_lname) as name, lower(customer_street) as street FROM customers")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -82,16 +82,12 @@ func GenerateTFIDF(pool *pgxpool.Pool, run_id int) {
 
 	var customers []Customer
 	for rows.Next() {
-		var id int
-		var name, street string
-		if err := rows.Scan(&id, &name, &street); err != nil {
+		var customer Customer
+		if err := rows.Scan(&customer.ID, &customer.Name, &customer.Street); err != nil {
 			log.Fatal(err)
 		}
-		customers = append(customers, Customer{
-			ID:     id,
-			Name:   name,
-			Street: standardizeStreet(street),
-		})
+		customer.Street = standardizeStreet(customer.Street)
+		customers = append(customers, customer)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -100,16 +96,16 @@ func GenerateTFIDF(pool *pgxpool.Pool, run_id int) {
 
 	totalDocs := len(customers)
 	docFreq := make(map[string]int)
-	customerTokens := []struct {
+	customerTokens := make([]struct {
 		CustomerID int
 		EntityType int
 		Token      string
 		Frequency  int
-	}{}
+	}, 0, totalDocs*10)
 
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 10) // Limit to 10 concurrent goroutines
+	sem := make(chan struct{}, 50)
 
 	for _, customer := range customers {
 		wg.Add(1)
@@ -117,23 +113,22 @@ func GenerateTFIDF(pool *pgxpool.Pool, run_id int) {
 			defer wg.Done()
 			sem <- struct{}{}
 
-			nameTokenFreq := make(map[string]int)
-			streetTokenFreq := make(map[string]int)
-
-			// Tokenize and count tokens for name
 			nameTokens := tokenize(c.Name)
+			streetTokens := tokenize(c.Street)
+
+			nameTokenFreq := make(map[string]int, len(nameTokens))
+			streetTokenFreq := make(map[string]int, len(streetTokens))
+
 			for _, token := range nameTokens {
 				nameTokenFreq[token]++
 			}
-
-			// Tokenize and count tokens for street
-			streetTokens := tokenize(c.Street)
 			for _, token := range streetTokens {
 				streetTokenFreq[token]++
 			}
 
 			mu.Lock()
-			// Add name tokens to customerTokens and docFreq
+			defer mu.Unlock()
+
 			for token, freq := range nameTokenFreq {
 				customerTokens = append(customerTokens, struct {
 					CustomerID int
@@ -142,14 +137,12 @@ func GenerateTFIDF(pool *pgxpool.Pool, run_id int) {
 					Frequency  int
 				}{
 					CustomerID: c.ID,
-					EntityType: 2, // EntityTypeID 2 for customer full name
+					EntityType: 2,
 					Token:      token,
 					Frequency:  freq,
 				})
 				docFreq[token]++
 			}
-
-			// Add street tokens to customerTokens and docFreq
 			for token, freq := range streetTokenFreq {
 				customerTokens = append(customerTokens, struct {
 					CustomerID int
@@ -158,13 +151,12 @@ func GenerateTFIDF(pool *pgxpool.Pool, run_id int) {
 					Frequency  int
 				}{
 					CustomerID: c.ID,
-					EntityType: 1, // EntityTypeID 1 for street address
+					EntityType: 1,
 					Token:      token,
 					Frequency:  freq,
 				})
 				docFreq[token]++
 			}
-			mu.Unlock()
 			<-sem
 		}(customer)
 	}
@@ -184,9 +176,8 @@ func GenerateTFIDF(pool *pgxpool.Pool, run_id int) {
 	batchSize := 1000
 	idfCount := 0
 
-	// Insert IDF values in batches
 	for token, idfValue := range idf {
-		_, err := tx.Exec(ctx, insertIDF, 1, token, idfValue, run_id) // EntityTypeID 1 for street address
+		_, err := tx.Exec(ctx, insertIDF, 1, token, idfValue, runID)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -205,9 +196,8 @@ func GenerateTFIDF(pool *pgxpool.Pool, run_id int) {
 	insertCustomerTokens := "INSERT INTO customer_tokens (customer_id, entity_type_id, ngram_token, ngram_frequency, run_id) VALUES ($1, $2, $3, $4, $5)"
 	tokenCount := 0
 
-	// Insert customer tokens in batches
 	for _, ct := range customerTokens {
-		_, err := tx.Exec(ctx, insertCustomerTokens, ct.CustomerID, ct.EntityType, ct.Token, ct.Frequency, run_id)
+		_, err := tx.Exec(ctx, insertCustomerTokens, ct.CustomerID, ct.EntityType, ct.Token, ct.Frequency, runID)
 		if err != nil {
 			log.Fatal(err)
 		}

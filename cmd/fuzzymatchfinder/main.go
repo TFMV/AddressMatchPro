@@ -10,7 +10,7 @@
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
 //
-// The above copyright notice and this permission notice shall be included in all
+// The above copyright notice shall be included in all
 // copies or substantial portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -36,6 +36,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"time"
 
 	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -116,7 +117,7 @@ func syncCustomerMatchingWithRun(pool *pgxpool.Pool) {
 	// Insert rows into customer_matching with run_id = 0
 	insertQuery := `
 		INSERT INTO customer_matching (customer_id, first_name, last_name, phone_number, street, city, state, zip_code, run_id)
-		SELECT customer_id, customer_fname, customer_lname, NULL AS phone_number, customer_street, customer_city, customer_state, customer_zipcode::TEXT, 0 AS run_id
+		SELECT customer_id, LOWER(customer_fname), LOWER(customer_lname), NULL AS phone_number, LOWER(customer_street), LOWER(customer_city), LOWER(customer_state), LOWER(customer_zipcode::TEXT), 0 AS run_id
 		FROM customers;
 	`
 	if _, err := pool.Exec(context.Background(), insertQuery); err != nil {
@@ -126,10 +127,12 @@ func syncCustomerMatchingWithRun(pool *pgxpool.Pool) {
 }
 
 func main() {
+	start := time.Now()
+
 	// Load the configuration file from the environment variable or use a default path
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		configPath = "./config.yaml"
+		configPath = "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/config.yaml"
 	}
 
 	config, err := loadConfig(configPath)
@@ -163,28 +166,37 @@ func main() {
 	fmt.Println("Database connection pool created successfully")
 
 	// Clear existing run_id = 0 and insert default run into runs table
+	stepStart := time.Now()
 	clearAndInsertDefaultRun(pool)
+	fmt.Printf("Default run inserted in %v\n", time.Since(stepStart))
 
 	// Clear old candidates with run_id = 0
+	stepStart = time.Now()
 	clearOldCandidates(pool)
-	fmt.Println("Old candidates cleared successfully")
+	fmt.Printf("Old candidates cleared in %v\n", time.Since(stepStart))
 
 	// Sync customer_matching table with run_id = 0
+	stepStart = time.Now()
 	syncCustomerMatchingWithRun(pool)
+	fmt.Printf("Customer matching table synced in %v\n", time.Since(stepStart))
 
 	// Load reference entities once
+	stepStart = time.Now()
 	referenceEntities := matcher.LoadReferenceEntities(pool)
-	fmt.Println("Reference entities loaded successfully")
+	fmt.Printf("Reference entities loaded in %v\n", time.Since(stepStart))
 
 	// Process customer addresses and generate binary keys with concurrency
+	stepStart = time.Now()
 	matcher.ProcessCustomerAddresses(pool, referenceEntities, 10, 0) // Passing run_id = 0
-	fmt.Println("Customer addresses processed and binary keys generated successfully")
+	fmt.Printf("Customer addresses processed in %v\n", time.Since(stepStart))
 
 	// Generate TF/IDF vectors
+	stepStart = time.Now()
 	matcher.GenerateTFIDF(pool, 0) // Passing run_id = 0
-	fmt.Println("TF/IDF vectors generated successfully")
+	fmt.Printf("TF/IDF vectors generated in %v\n", time.Since(stepStart))
 
 	// Insert vector embeddings using Python script
+	stepStart = time.Now()
 	scriptPath := os.Getenv("SCRIPT_PATH")
 	if scriptPath == "" {
 		scriptPath = "./python-ml/generate_embeddings.py" // Default path for local development
@@ -192,5 +204,7 @@ func main() {
 	if err := generateEmbeddingsPythonScript(scriptPath, 0); err != nil {
 		log.Fatalf("Failed to generate embeddings: %v", err)
 	}
-	fmt.Println("Vector embeddings generated successfully")
+	fmt.Printf("Vector embeddings generated in %v\n", time.Since(stepStart))
+
+	fmt.Printf("Total time taken: %v\n", time.Since(start))
 }
