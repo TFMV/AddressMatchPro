@@ -27,51 +27,60 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package standardizer
+package matcher
 
 import (
-	"regexp"
-	"strings"
+	"context"
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// StandardizeAddress takes raw address components and returns a standardized address string.
-func StandardizeAddress(street string) (string, error) {
-	// Define common abbreviations
-	abbreviations := map[string]string{
-		"avenue":    "ave",
-		"boulevard": "blvd",
-		"circle":    "cir",
-		"court":     "ct",
-		"drive":     "dr",
-		"highway":   "hwy",
-		"lane":      "ln",
-		"place":     "pl",
-		"road":      "rd",
-		"street":    "st",
-		"terrace":   "ter",
-		"northwest": "nw",
-		"southeast": "se",
-		"southwest": "sw",
-		"northeast": "ne",
-		"unit":      "unit",
-		"ste":       "ste",
-		"apt":       "apt",
-		"floor":     "fl",
-		"po box":    "pobox", // Keep consistent with reference entities
+func main() {
+	// Connect to the database
+	databaseUrl := os.Getenv("DATABASE_URL")
+	if databaseUrl == "" {
+		log.Fatalf("DATABASE_URL environment variable is not set")
 	}
 
-	// Normalize the street address by converting to lower case and trimming spaces
-	street = strings.ToLower(street)
-	street = strings.TrimSpace(street)
-
-	// Remove extra spaces within the street address
-	space := regexp.MustCompile(`\s+`)
-	street = space.ReplaceAllString(street, " ")
-
-	// Apply abbreviations
-	for longForm, shortForm := range abbreviations {
-		street = strings.ReplaceAll(street, longForm, shortForm)
+	config, err := pgxpool.ParseConfig(databaseUrl)
+	if err != nil {
+		log.Fatalf("Unable to parse DATABASE_URL: %v\n", err)
 	}
 
-	return street, nil
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		log.Fatalf("Unable to create connection pool: %v\n", err)
+	}
+	defer pool.Close()
+
+	// Read reference addresses once
+	referenceEntities := LoadReferenceEntities(pool)
+	fmt.Println("Reference entities loaded successfully")
+
+	// Clear old candidates with run_id = 0
+	clearOldCandidates(pool)
+	fmt.Println("Old candidates cleared successfully")
+
+	// Process customer addresses and generate binary keys with concurrency
+	runID := 0
+	ProcessCustomerAddresses(pool, referenceEntities, 10, runID)
+	fmt.Println("Customer addresses processed and binary keys generated successfully")
+}
+
+func clearOldCandidates(pool *pgxpool.Pool) {
+	tables := []string{
+		"customer_keys",
+		"customer_tokens",
+		"tokens_idf",
+		"customer_vector_embedding",
+	}
+	for _, table := range tables {
+		query := fmt.Sprintf("DELETE FROM %s WHERE run_id = 0", table)
+		if _, err := pool.Exec(context.Background(), query); err != nil {
+			log.Fatalf("Failed to clear old candidates from %s: %v", table, err)
+		}
+	}
 }

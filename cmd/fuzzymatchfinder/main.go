@@ -10,7 +10,7 @@
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
 //
-// The above copyright notice and this permission notice shall be included in all
+// The above copyright notice shall be included in all
 // copies or substantial portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -35,6 +35,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
 
 	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -64,6 +65,30 @@ func loadConfig(configPath string) (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+func generateEmbeddingsPythonScript(scriptPath string, runID int) error {
+	cmd := exec.Command("python3", scriptPath, strconv.Itoa(runID))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error running Python script: %v, output: %s", err, string(output))
+	}
+	return nil
+}
+
+func clearOldCandidates(pool *pgxpool.Pool) {
+	tables := []string{
+		"customer_keys",
+		"customer_tokens",
+		"tokens_idf",
+		"customer_vector_embedding",
+	}
+	for _, table := range tables {
+		query := fmt.Sprintf("DELETE FROM %s WHERE run_id = 0", table)
+		if _, err := pool.Exec(context.Background(), query); err != nil {
+			log.Fatalf("Failed to clear old candidates from %s: %v", table, err)
+		}
+	}
 }
 
 func main() {
@@ -99,24 +124,26 @@ func main() {
 	defer pool.Close()
 	fmt.Println("Database connection pool created successfully")
 
+	// Clear old candidates with run_id = 0
+	clearOldCandidates(pool)
+	fmt.Println("Old candidates cleared successfully")
+
 	// Load reference entities once
 	referenceEntities := matcher.LoadReferenceEntities(pool)
 	fmt.Println("Reference entities loaded successfully")
 
 	// Process customer addresses and generate binary keys with concurrency
-	matcher.ProcessCustomerAddresses(pool, referenceEntities, 10)
+	matcher.ProcessCustomerAddresses(pool, referenceEntities, 10, 0) // Passing run_id = 0
 	fmt.Println("Customer addresses processed and binary keys generated successfully")
 
 	// Generate TF/IDF vectors
-	matcher.GenerateTFIDF(pool)
+	matcher.GenerateTFIDF(pool, 0) // Passing run_id = 0
 	fmt.Println("TF/IDF vectors generated successfully")
 
-	// Call the Python script to generate embeddings
-	cmd := exec.Command("python", "../python-ml/generate_embeddings.py")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Fatalf("Failed to run Python script: %v\nOutput: %s", err, output)
+	// Insert vector embeddings using Python script
+	scriptPath := "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/python-ml/generate_embeddings.py"
+	if err := generateEmbeddingsPythonScript(scriptPath, 0); err != nil {
+		log.Fatalf("Failed to generate embeddings: %v", err)
 	}
-	fmt.Println("Python script executed successfully")
-	fmt.Println(string(output))
+	fmt.Println("Vector embeddings generated successfully")
 }

@@ -44,7 +44,7 @@ DROP TABLE IF EXISTS customer_matching;
 
 -- Create customer_matching table
 CREATE TABLE customer_matching (
-    customer_id INTEGER PRIMARY KEY,
+    customer_id SERIAL PRIMARY KEY,
     first_name TEXT,
     last_name TEXT,
     phone_number TEXT,
@@ -55,7 +55,7 @@ CREATE TABLE customer_matching (
     run_id INT
 );
 
--- Unique index on customer_matching customer_id and run_id
+-- unique index on customer_matching customer_id and run_id
 CREATE UNIQUE INDEX idx_customer_matching_customer_id_run_id ON customer_matching (customer_id, run_id);
 
 -- Create customer_keys table partitioned by run_id
@@ -108,7 +108,3 @@ CREATE TABLE customer_vector_embedding_default PARTITION OF customer_vector_embe
 CREATE INDEX idx_customer_keys_binary_key ON customer_keys (binary_key);
 CREATE INDEX idx_customer_tokens_ngram_token ON customer_tokens (ngram_token);
 CREATE INDEX idx_tokens_idf_ngram_token ON tokens_idf (ngram_token);
-
--- Insert data from customers table to customer_matching table with run_id = 0
-INSERT INTO customer_matching (customer_id, first_name, last_name, phone_number, street, city, state, zip_code, run_id)
-SELECT customer_id, customer_fname, customer_lname, NULL AS phone_number, customer_street, customer_city, customer_state, customer_zipcode::TEXT, 0 AS run_id FROM customers;

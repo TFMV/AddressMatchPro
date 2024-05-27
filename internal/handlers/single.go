@@ -10,7 +10,7 @@
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
 //
-// The above copyright notice and this permission notice shall be included in all
+// The above copyright notice shall be included in all
 // copies or substantial portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -27,34 +27,35 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package main
+package handlers
 
 import (
-	"context"
-	"log"
-	"os"
+	"encoding/json"
+	"net/http"
 
 	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func main() {
-	// Connect to the database
-	databaseUrl := os.Getenv("DATABASE_URL")
-	config, err := pgxpool.ParseConfig(databaseUrl)
-	if err != nil {
-		log.Fatalf("Unable to parse DATABASE_URL: %v\n", err)
+func MatchSingleHandler(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req matcher.MatchRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Insert the single record into the database with a unique run_id
+		runID := matcher.CreateNewRun(pool, "Single Record Matching")
+		req.RunID = runID
+
+		// Process the record and generate keys/vectors
+		matcher.ProcessSingleRecord(pool, req)
+
+		// Find matches
+		candidates := matcher.FindMatches(req, matcher.NewScorer(), pool)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(candidates)
 	}
-
-	pool, err := pgxpool.NewWithConfig(context.Background(), config)
-	if err != nil {
-		log.Fatalf("Unable to create connection pool: %v\n", err)
-	}
-	defer pool.Close()
-
-	// Read reference addresses once
-	referenceEntities := matcher.LoadReferenceEntities(pool)
-
-	// Process customer addresses and generate binary keys with concurrency
-	matcher.ProcessCustomerAddresses(pool, referenceEntities, 10)
 }

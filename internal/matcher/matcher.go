@@ -10,7 +10,7 @@
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
 //
-// The above copyright notice and this permission notice shall be included in all
+// The above copyright notice shall be included in all
 // copies or substantial portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -36,7 +36,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/TFMV/FuzzyMatchFinder/internal/standardizer"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -50,6 +49,7 @@ type MatchRequest struct {
 	State       string `json:"state"`
 	ZipCode     string `json:"zip_code"`
 	TopN        int    `json:"top_n"`
+	RunID       int    `json:"run_id"`
 }
 
 // Candidate represents a potential match
@@ -63,9 +63,53 @@ type Candidate struct {
 	Similarity float64
 }
 
+// Scorer represents a scoring mechanism for candidates
+type Scorer struct {
+	Weights map[string]float64
+}
+
+// Score calculates a score based on the provided features and weights
+func (s *Scorer) Score(features map[string]float64) float64 {
+	score := 0.0
+	for feature, weight := range s.Weights {
+		score += features[feature] * weight
+	}
+	return score
+}
+
+// ExtractFeatures extracts features from the MatchRequest and Candidate
+func ExtractFeatures(req MatchRequest, candidate Candidate, standardizedCandidateAddress string) map[string]float64 {
+	features := make(map[string]float64)
+
+	// Example feature: matching first name
+	if strings.EqualFold(req.FirstName, candidate.FullName) {
+		features["first_name_match"] = 1.0
+	} else {
+		features["first_name_match"] = 0.0
+	}
+
+	// Example feature: matching last name
+	if strings.EqualFold(req.LastName, candidate.FullName) {
+		features["last_name_match"] = 1.0
+	} else {
+		features["last_name_match"] = 0.0
+	}
+
+	// Example feature: standardized address match
+	if standardizedCandidateAddress == req.Street {
+		features["address_match"] = 1.0
+	} else {
+		features["address_match"] = 0.0
+	}
+
+	// Add more features as needed
+
+	return features
+}
+
 // FindMatches finds the best matches for a given MatchRequest
 func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candidate {
-	standardizedAddress, err := standardizer.StandardizeAddress(req.Street)
+	standardizedAddress, err := StandardizeAddress(req.Street)
 	if err != nil {
 		log.Printf("Failed to standardize address: %v\n", err)
 		return nil
@@ -74,8 +118,8 @@ func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candida
 	referenceEntities := LoadReferenceEntities(pool)
 	binaryKey := CalculateBinaryKey(referenceEntities, strings.ToLower(standardizedAddress))
 
-	query := "SELECT id, first_name, last_name, phone_number, street, city, state, zip_code FROM customers WHERE binary_key = $1"
-	rows, err := pool.Query(context.Background(), query, binaryKey)
+	query := "SELECT id, first_name, last_name, phone_number, street, city, state, zip_code FROM customers WHERE binary_key = $1 AND run_id = $2"
+	rows, err := pool.Query(context.Background(), query, binaryKey, req.RunID)
 	if err != nil {
 		log.Printf("Query failed: %v\n", err)
 		return nil
@@ -93,7 +137,7 @@ func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candida
 		}
 
 		// Standardize candidate address
-		standardizedCandidateAddress, err := standardizer.StandardizeAddress(street)
+		standardizedCandidateAddress, err := StandardizeAddress(street)
 		if err != nil {
 			log.Printf("Failed to standardize candidate address: %v\n", err)
 			continue
@@ -124,7 +168,7 @@ func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candida
 }
 
 // FindPotentialMatches finds potential matches based on binary key or vector similarity
-func FindPotentialMatches(pool *pgxpool.Pool, binaryKey string, queryVector []float64) ([]Candidate, error) {
+func FindPotentialMatches(pool *pgxpool.Pool, binaryKey string, queryVector []float64, runID int) ([]Candidate, error) {
 	// Convert the query vector to a string
 	queryVectorStr := fmt.Sprintf("'{%s}'", join(queryVector, ", "))
 
@@ -133,14 +177,13 @@ func FindPotentialMatches(pool *pgxpool.Pool, binaryKey string, queryVector []fl
 		SELECT c.customer_id, c.customer_fname || ' ' || c.customer_lname AS name, c.customer_street AS street, cv.vector_embedding <=> $2 AS similarity
 		FROM customer_vector_embedding cv
 		JOIN customers c ON cv.customer_id = c.customer_id
-		WHERE binary_key = $1
-		OR cv.vector_embedding <=> $2 < 0.8
+		WHERE (c.binary_key = $1 OR cv.vector_embedding <=> $2 < 0.8) AND c.run_id = $3
 		ORDER BY similarity ASC
 		LIMIT 10;
 	`
 
 	// Execute the query
-	rows, err := pool.Query(context.Background(), query, binaryKey, queryVectorStr)
+	rows, err := pool.Query(context.Background(), query, binaryKey, queryVectorStr, runID)
 	if err != nil {
 		return nil, err
 	}
