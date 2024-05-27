@@ -33,12 +33,25 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"gopkg.in/yaml.v2"
 )
+
+type Config struct {
+	DBCreds struct {
+		Host      string `yaml:"host"`
+		Port      string `yaml:"port"`
+		Username  string `yaml:"username"`
+		Password  string `yaml:"password"`
+		Database  string `yaml:"database"`
+		LoadTable string `yaml:"load_table"`
+	} `yaml:"db_creds"`
+}
 
 // Load reference entities into memory
 func LoadReferenceEntities(pool *pgxpool.Pool) []string {
@@ -222,4 +235,19 @@ func CreateNewRun(pool *pgxpool.Pool, description string) int {
 		log.Fatalf("Failed to create new run: %v\n", err)
 	}
 	return runID
+}
+
+func LoadConfig(configPath string) (*Config, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read config file: %v", err)
+	}
+
+	var config Config
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal config file: %v", err)
+	}
+
+	return &config, nil
 }

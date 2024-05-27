@@ -27,7 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package main
+package db
 
 import (
 	"context"
@@ -40,33 +40,7 @@ import (
 
 	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"gopkg.in/yaml.v2"
 )
-
-type Config struct {
-	DBCreds struct {
-		Host     string `yaml:"host"`
-		Port     string `yaml:"port"`
-		Username string `yaml:"username"`
-		Password string `yaml:"password"`
-		Database string `yaml:"database"`
-	} `yaml:"db_creds"`
-}
-
-func loadConfig(configPath string) (*Config, error) {
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("unable to read config file: %v", err)
-	}
-
-	var config Config
-	err = yaml.Unmarshal(data, &config)
-	if err != nil {
-		return nil, fmt.Errorf("unable to unmarshal config file: %v", err)
-	}
-
-	return &config, nil
-}
 
 func generateEmbeddingsPythonScript(scriptPath string, runID int) error {
 	cmd := exec.Command("python3", scriptPath, strconv.Itoa(runID))
@@ -129,13 +103,13 @@ func syncCustomerMatchingWithRun(pool *pgxpool.Pool) {
 func main() {
 	start := time.Now()
 
-	// Load the configuration file from the environment variable or use a default path
+	// Load the configuration
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		configPath = "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/config.yaml"
+		configPath = "./config.yaml" // Default path for local development
 	}
 
-	config, err := loadConfig(configPath)
+	config, err := matcher.LoadConfig(configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
