@@ -72,12 +72,12 @@ func CalculateBinaryKey(referenceEntities []string, street string) string {
 		} else {
 			binaryKey.WriteString("0")
 		}
-		if binaryKey.Len() >= 10 { // Ensure the binary key is 20 characters long
+		if binaryKey.Len() >= 10 { // Ensure the binary key is 10 characters long
 			break
 		}
 	}
 
-	// Ensure the binary key is exactly 20 characters long
+	// Ensure the binary key is exactly 10 characters long
 	for binaryKey.Len() < 10 {
 		binaryKey.WriteString("0")
 	}
@@ -86,7 +86,7 @@ func CalculateBinaryKey(referenceEntities []string, street string) string {
 }
 
 // Insert a batch of results into the database
-func InsertBatch(pool *pgxpool.Pool, batch [][2]interface{}, run_id int) {
+func InsertBatch(pool *pgxpool.Pool, batch [][2]interface{}, runID int) {
 	batchSize := len(batch)
 	ids := make([]interface{}, batchSize)
 	keys := make([]interface{}, batchSize)
@@ -98,7 +98,7 @@ func InsertBatch(pool *pgxpool.Pool, batch [][2]interface{}, run_id int) {
 
 	_, err := pool.Exec(context.Background(),
 		"INSERT INTO customer_keys (customer_id, binary_key, run_id) SELECT UNNEST($1::int[]), UNNEST($2::text[]), $3",
-		ids, keys, run_id,
+		ids, keys, runID,
 	)
 	if err != nil {
 		log.Fatalf("Batch insert failed: %v\n", err)
@@ -106,7 +106,7 @@ func InsertBatch(pool *pgxpool.Pool, batch [][2]interface{}, run_id int) {
 }
 
 // Process customer addresses and generate binary keys
-func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, numWorkers int, run_id int) {
+func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, numWorkers int, runID int) {
 	rows, err := pool.Query(context.Background(), "SELECT customer_id as id, customer_street as street FROM customers")
 	if err != nil {
 		log.Fatalf("Query failed: %v\n", err)
@@ -144,12 +144,12 @@ func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, nu
 		for res := range resultCh {
 			batch = append(batch, res)
 			if len(batch) >= batchSize {
-				InsertBatch(pool, batch, run_id)
+				InsertBatch(pool, batch, runID)
 				batch = batch[:0] // reset batch
 			}
 		}
 		if len(batch) > 0 {
-			InsertBatch(pool, batch, run_id)
+			InsertBatch(pool, batch, runID)
 		}
 	}()
 
@@ -172,13 +172,14 @@ func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, nu
 func ProcessSingleRecord(pool *pgxpool.Pool, req MatchRequest) {
 	_, err := pool.Exec(context.Background(),
 		"INSERT INTO customer_matching (first_name, last_name, phone_number, street, city, state, zip_code, run_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-		req.FirstName, req.LastName, req.PhoneNumber, req.Street, req.City, req.State, req.ZipCode, req.RunID)
+		strings.ToLower(req.FirstName), strings.ToLower(req.LastName), strings.ToLower(req.PhoneNumber),
+		strings.ToLower(req.Street), strings.ToLower(req.City), strings.ToLower(req.State), strings.ToLower(req.ZipCode), req.RunID)
 	if err != nil {
 		fmt.Printf("Failed to process single record: %v\n", err)
 	}
 }
 
-// generateEmbeddingsPythonScript runs the Python script to generate embeddings for a given run ID
+// Generate embeddings using Python script
 func generateEmbeddingsPythonScript(scriptPath string, runID int) error {
 	cmd := exec.Command("python3", scriptPath, fmt.Sprintf("--run_id=%d", runID))
 	output, err := cmd.CombinedOutput()
@@ -188,7 +189,7 @@ func generateEmbeddingsPythonScript(scriptPath string, runID int) error {
 	return nil
 }
 
-// join converts a slice of floats to a comma-separated string
+// Join converts a slice of floats to a comma-separated string
 func join(slice []float64, sep string) string {
 	str := ""
 	for i, v := range slice {
@@ -200,10 +201,23 @@ func join(slice []float64, sep string) string {
 	return str
 }
 
-// CreateNewRun creates a new run entry in the database and returns the run ID
+// NewScorer returns a new instance of Scorer
+func NewScorer() *Scorer {
+	return &Scorer{
+		Weights: map[string]float64{
+			"first_name_match": 0.3,
+			"last_name_match":  0.3,
+			"address_match":    0.4,
+		},
+	}
+}
+
 func CreateNewRun(pool *pgxpool.Pool, description string) int {
 	var runID int
-	err := pool.QueryRow(context.Background(), "INSERT INTO runs (description) VALUES ($1) RETURNING run_id", description).Scan(&runID)
+	err := pool.QueryRow(context.Background(),
+		"INSERT INTO runs (description) VALUES ($1) RETURNING run_id",
+		description,
+	).Scan(&runID)
 	if err != nil {
 		log.Fatalf("Failed to create new run: %v\n", err)
 	}
