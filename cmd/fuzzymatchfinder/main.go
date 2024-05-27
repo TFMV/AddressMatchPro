@@ -91,11 +91,45 @@ func clearOldCandidates(pool *pgxpool.Pool) {
 	}
 }
 
+func clearAndInsertDefaultRun(pool *pgxpool.Pool) {
+	// Clear existing entry with run_id = 0 from runs table
+	clearQuery := "DELETE FROM runs WHERE run_id = 0"
+	if _, err := pool.Exec(context.Background(), clearQuery); err != nil {
+		log.Fatalf("Failed to clear runs for run_id = 0: %v", err)
+	}
+
+	// Insert default run_id = 0 into runs table
+	insertQuery := "INSERT INTO runs (run_id, description) VALUES (0, 'Default run')"
+	if _, err := pool.Exec(context.Background(), insertQuery); err != nil {
+		log.Fatalf("Failed to insert default run: %v", err)
+	}
+	fmt.Println("Default run inserted successfully")
+}
+
+func syncCustomerMatchingWithRun(pool *pgxpool.Pool) {
+	// Clear existing entries in customer_matching with run_id = 0
+	clearQuery := "DELETE FROM customer_matching WHERE run_id = 0"
+	if _, err := pool.Exec(context.Background(), clearQuery); err != nil {
+		log.Fatalf("Failed to clear customer_matching for run_id = 0: %v", err)
+	}
+
+	// Insert rows into customer_matching with run_id = 0
+	insertQuery := `
+		INSERT INTO customer_matching (customer_id, first_name, last_name, phone_number, street, city, state, zip_code, run_id)
+		SELECT customer_id, customer_fname, customer_lname, NULL AS phone_number, customer_street, customer_city, customer_state, customer_zipcode::TEXT, 0 AS run_id
+		FROM customers;
+	`
+	if _, err := pool.Exec(context.Background(), insertQuery); err != nil {
+		log.Fatalf("Failed to insert into customer_matching for run_id = 0: %v", err)
+	}
+	fmt.Println("Customer matching table synced with run_id = 0")
+}
+
 func main() {
 	// Load the configuration file from the environment variable or use a default path
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		configPath = "./config.yaml" // Default path for local development
+		configPath = "./config.yaml"
 	}
 
 	config, err := loadConfig(configPath)
@@ -128,9 +162,15 @@ func main() {
 	defer pool.Close()
 	fmt.Println("Database connection pool created successfully")
 
+	// Clear existing run_id = 0 and insert default run into runs table
+	clearAndInsertDefaultRun(pool)
+
 	// Clear old candidates with run_id = 0
 	clearOldCandidates(pool)
 	fmt.Println("Old candidates cleared successfully")
+
+	// Sync customer_matching table with run_id = 0
+	syncCustomerMatchingWithRun(pool)
 
 	// Load reference entities once
 	referenceEntities := matcher.LoadReferenceEntities(pool)
