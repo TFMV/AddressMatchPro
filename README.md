@@ -58,7 +58,7 @@ FuzzyMatchFinder is an advanced entity matching solution leveraging machine lear
 - [x] Create endpoints for matching entities.
 - [x] Develop endpoint for single record matching.
 - [x] Develop endpoint for batch record matching.
-- [ ] Implement middleware for request validation and logging.
+- [x] Implement middleware for request validation and logging.
 - [ ] Develop utility functions for response formatting.
 
 ### Phase 4: Testing and Optimization
