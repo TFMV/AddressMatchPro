@@ -42,7 +42,7 @@ def standardize_address(first_name, last_name, phone_number, street, city, state
     return standardized_address
 
 # Connect to the PostgreSQL database
-engine = create_engine('postgresql://user:password@localhost:5432/mydb')
+engine = create_engine('postgresql://user:password@localhost:5432/tfmv')
 
 # Query the customer data
 query = """

@@ -10,7 +10,7 @@
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
 //
-// The above copyright notice shall be included in all
+// The above copyright notice and this permission notice shall be included in all
 // copies or substantial portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -27,32 +27,62 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package main
+package api
 
 import (
 	"encoding/csv"
-	"encoding/json"
 	"net/http"
 
 	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
+	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func matchBatchHandler(pool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		file, _, err := r.FormFile("file")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+// MatchSingleHandler handles single match requests
+func MatchSingleHandler(pool *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req matcher.MatchRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		defer file.Close()
+
+		// Insert the single record into the database with a unique run_id
+		runID := matcher.CreateNewRun(pool, "Single Record Matching")
+		req.RunID = runID
+
+		// Process the record and generate keys/vectors
+		matcher.ProcessSingleRecord(pool, req)
+
+		// Find matches
+		candidates := matcher.FindMatches(req, matcher.NewScorer(), pool)
+
+		c.JSON(http.StatusOK, candidates)
+	}
+}
+
+// MatchBatchHandler handles batch match requests
+func MatchBatchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		file, err := c.FormFile("file")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		f, err := file.Open()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer f.Close()
 
 		// Insert the records into the database with a unique run_id
-		runID := createNewRun(pool, "Batch Record Matching")
+		runID := matcher.CreateNewRun(pool, "Batch Record Matching")
 
-		records, err := csv.NewReader(file).ReadAll()
+		records, err := csv.NewReader(f).ReadAll()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -76,7 +106,6 @@ func matchBatchHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		// Find matches for each record
 		candidates := matcher.FindMatchesBatch(runID, matcher.NewScorer(), pool)
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(candidates)
+		c.JSON(http.StatusOK, candidates)
 	}
 }

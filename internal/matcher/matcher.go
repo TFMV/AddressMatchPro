@@ -10,8 +10,8 @@
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
 //
-// The above copyright notice shall be included in all
-// copies or substantial portions of the Software.
+// The above copyright notice shall be included in all copies or substantial
+// portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -50,17 +50,24 @@ type MatchRequest struct {
 	ZipCode     string `json:"zip_code"`
 	TopN        int    `json:"top_n"`
 	RunID       int    `json:"run_id"`
+	ID          int    `json:"id"` // Added missing field
 }
 
 // Candidate represents a potential match
 type Candidate struct {
-	ID         int     `json:"id"`
-	FullName   string  `json:"full_name"`
-	Score      float64 `json:"score"`
-	CustomerID int
-	Name       string
-	Street     string
-	Similarity float64
+	ID          int     `json:"id"`
+	FullName    string  `json:"full_name"`
+	Score       float64 `json:"score"`
+	CustomerID  int
+	Name        string
+	Street      string
+	Similarity  float64
+	FirstName   string `json:"first_name"` // Added missing fields
+	LastName    string `json:"last_name"`
+	PhoneNumber string `json:"phone_number"`
+	City        string `json:"city"`
+	State       string `json:"state"`
+	ZipCode     string `json:"zip_code"`
 }
 
 // Scorer represents a scoring mechanism for candidates
@@ -82,14 +89,14 @@ func ExtractFeatures(req MatchRequest, candidate Candidate, standardizedCandidat
 	features := make(map[string]float64)
 
 	// Example feature: matching first name
-	if strings.EqualFold(req.FirstName, candidate.FullName) {
+	if strings.EqualFold(req.FirstName, candidate.FirstName) {
 		features["first_name_match"] = 1.0
 	} else {
 		features["first_name_match"] = 0.0
 	}
 
 	// Example feature: matching last name
-	if strings.EqualFold(req.LastName, candidate.FullName) {
+	if strings.EqualFold(req.LastName, candidate.LastName) {
 		features["last_name_match"] = 1.0
 	} else {
 		features["last_name_match"] = 0.0
@@ -218,4 +225,77 @@ func join(slice []float64, sep string) string {
 		str += fmt.Sprintf("%f", v)
 	}
 	return str
+}
+
+// NewScorer returns a new instance of Scorer
+func NewScorer() *Scorer {
+	return &Scorer{}
+}
+
+// FindMatchesBatch finds matches for a batch of records by run ID
+func FindMatchesBatch(runID int, scorer *Scorer, pool *pgxpool.Pool) []Candidate {
+	query := "SELECT customer_id, first_name, last_name, phone_number, street, city, state, zip_code FROM customer_matching WHERE run_id = $1"
+	rows, err := pool.Query(context.Background(), query, runID)
+	if err != nil {
+		log.Printf("Query failed: %v\n", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var candidates []Candidate
+	for rows.Next() {
+		var req MatchRequest
+		err = rows.Scan(&req.ID, &req.FirstName, &req.LastName, &req.PhoneNumber, &req.Street, &req.City, &req.State, &req.ZipCode)
+		if err != nil {
+			log.Printf("Row scan failed: %v\n", err)
+			continue
+		}
+
+		// Process each record
+		standardizedAddress, err := StandardizeAddress(req.Street)
+		if err != nil {
+			log.Printf("Failed to standardize address: %v\n", err)
+			continue
+		}
+
+		referenceEntities := LoadReferenceEntities(pool)
+		binaryKey := CalculateBinaryKey(referenceEntities, strings.ToLower(standardizedAddress))
+
+		candidateQuery := "SELECT customer_id, first_name, last_name, phone_number, street, city, state, zip_code FROM customer_keys WHERE binary_key = $1"
+		candidateRows, err := pool.Query(context.Background(), candidateQuery, binaryKey)
+		if err != nil {
+			log.Printf("Candidate query failed: %v\n", err)
+			continue
+		}
+		defer candidateRows.Close()
+
+		for candidateRows.Next() {
+			var candidate Candidate
+			err = candidateRows.Scan(&candidate.CustomerID, &candidate.FirstName, &candidate.LastName, &candidate.PhoneNumber, &candidate.Street, &candidate.City, &candidate.State, &candidate.ZipCode)
+			if err != nil {
+				log.Printf("Candidate row scan failed: %v\n", err)
+				continue
+			}
+
+			// Standardize candidate address
+			standardizedCandidateAddress, err := StandardizeAddress(candidate.Street)
+			if err != nil {
+				log.Printf("Failed to standardize candidate address: %v\n", err)
+				continue
+			}
+
+			features := ExtractFeatures(req, candidate, standardizedCandidateAddress)
+			score := scorer.Score(features)
+			candidate.Score = score
+
+			candidates = append(candidates, candidate)
+		}
+	}
+
+	// Sort candidates by score in descending order
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Score > candidates[j].Score
+	})
+
+	return candidates
 }

@@ -27,15 +27,22 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package api
+package matcher
 
 import (
-	"github.com/gin-gonic/gin"
+	"context"
+	"fmt"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// SetupRoutes sets up the HTTP routes for the API
-func SetupRoutes(router *gin.Engine, pool *pgxpool.Pool) {
-	router.POST("/match-single", MatchSingleHandler(pool))
-	router.POST("/match-batch", MatchBatchHandler(pool))
+// CreateNewRun creates a new run entry in the database and returns the run_id
+func CreateNewRun(pool *pgxpool.Pool, description string) int {
+	var runID int
+	err := pool.QueryRow(context.Background(), "INSERT INTO runs (description) VALUES ($1) RETURNING run_id", description).Scan(&runID)
+	if err != nil {
+		fmt.Printf("Failed to create new run: %v\n", err)
+		return -1
+	}
+	return runID
 }
