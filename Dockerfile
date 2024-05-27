@@ -16,11 +16,12 @@ COPY . .
 # Build the Go application
 RUN go build -o fuzzymatchfinder ./cmd/fuzzymatchfinder
 
-# Stage 2: Create a minimal image with the Go binary and install Python dependencies
+# Stage 2: Create a minimal image with the Go binary
 FROM alpine:latest
 
-# Install Python and pip
-RUN apk add --no-cache python3 py3-pip
+# Install necessary packages
+RUN apk add --no-cache python3 py3-pip postgresql-dev build-base gfortran openblas-dev
+RUN apk add --no-cache python3-dev py3-setuptools gcc musl-dev libffi-dev
 
 # Set the working directory
 WORKDIR /app
@@ -28,16 +29,15 @@ WORKDIR /app
 # Copy the binary from the builder stage
 COPY --from=builder /app/fuzzymatchfinder .
 
-# Copy configuration and other necessary files
-COPY --from=builder /app/config.yaml .
-COPY --from=builder /app/assets /app/assets
+# Copy the Python ML script and requirements
 COPY --from=builder /app/python-ml /app/python-ml
 
-# Copy the requirements.txt file for the Python dependencies
-COPY --from=builder /app/python-ml/requirements.txt /app/python-ml/requirements.txt
+# Create and activate a virtual environment for Python
+RUN python3 -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
 
 # Install Python dependencies
-RUN pip3 install -r /app/python-ml/requirements.txt
+RUN /app/venv/bin/pip install --no-cache-dir -r /app/python-ml/requirements.txt
 
 # Expose the port on which the service will run
 EXPOSE 8080

@@ -20,7 +20,13 @@ func main() {
 	fmt.Println("Config loaded successfully")
 
 	// Create the database connection pool
-	pool, err := db.NewConnection(cfg.DBCreds)
+	pool, err := db.NewConnection(db.DBCreds{
+		Host:     cfg.DBCreds.Host,
+		Port:     cfg.DBCreds.Port,
+		Username: cfg.DBCreds.Username,
+		Password: cfg.DBCreds.Password,
+		Database: cfg.DBCreds.Database,
+	})
 	if err != nil {
 		log.Fatalf("Failed to create database connection pool: %v", err)
 	}
