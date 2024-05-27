@@ -44,11 +44,11 @@ nlp = spacy.load("en_core_web_md")
 
 # Database connection
 conn = psycopg2.connect(
-    dbname="your_dbname",
-    user="your_dbuser",
+    dbname="tfmv",
+    user="postgres",
     password="your_dbpassword",
-    host="your_dbhost",
-    port="your_dbport"
+    host="localhost",
+    port="5432"
 )
 cur = conn.cursor()
 
