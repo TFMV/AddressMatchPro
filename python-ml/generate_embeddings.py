@@ -29,46 +29,48 @@
 
 import spacy
 import psycopg2
-import numpy as np
 from psycopg2.extras import Json
+import sys
 
-# Load the spacy model
+# Check if run_id is provided as a command-line argument
+if len(sys.argv) != 2:
+    print("Usage: python generate_embeddings.py <run_id>")
+    sys.exit(1)
+
+run_id = int(sys.argv[1])
+
+# Load spaCy model
 nlp = spacy.load("en_core_web_md")
 
-# Connect to your PostgreSQL database
+# Database connection
 conn = psycopg2.connect(
-    dbname="tfmv",
-    user="postgres",
-    password="your_password",
-    host="localhost",
-    port="5432"
+    dbname="your_dbname",
+    user="your_dbuser",
+    password="your_dbpassword",
+    host="your_dbhost",
+    port="your_dbport"
 )
-
 cur = conn.cursor()
 
-# Query to select customer information
-query = "SELECT customer_id, lower(customer_fname) || ' ' || lower(customer_lname) || ' ' || lower(customer_street) as customer_info FROM customers"
-cur.execute(query)
-rows = cur.fetchall()
+# Fetch customer data from customer_matching with the given run_id
+cur.execute("SELECT customer_id, first_name, last_name, street, city, state, zip_code FROM customer_matching WHERE run_id = %s", (run_id,))
+customers = cur.fetchall()
 
-# Prepare insert statement
-insert_query = "INSERT INTO customer_vector_embedding (customer_id, vector_embedding) VALUES (%s, %s)"
+# Process each customer and generate embeddings
+for customer in customers:
+    customer_id, first_name, last_name, street, city, state, zip_code = customer
+    full_text = f"{first_name} {last_name} {street} {city} {state} {zip_code}"
+    doc = nlp(full_text)
+    vector_list = doc.vector.tolist()
 
-for row in rows:
-    customer_id, customer_info = row
-    doc = nlp(customer_info)
-    vector = doc.vector
-    # Convert numpy array to list for JSON serialization
-    vector_list = vector.tolist()
+    # Insert embeddings into customer_vector_embedding with the given run_id
+    insert_query = """
+        INSERT INTO customer_vector_embedding (customer_id, vector_embedding, run_id)
+        VALUES (%s, %s, %s)
+    """
+    cur.execute(insert_query, (customer_id, Json(vector_list), run_id))
 
-    # Insert into the database
-    cur.execute(insert_query, (customer_id, Json(vector_list)))
-
-# Commit the transaction
+# Commit changes and close connection
 conn.commit()
-
-# Close the database connection
 cur.close()
 conn.close()
-
-print("Vector embeddings insertion completed successfully.")

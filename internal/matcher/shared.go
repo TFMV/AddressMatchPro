@@ -10,7 +10,7 @@
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
 //
-// The above copyright notice and this permission notice shall be included in all
+// The above copyright notice shall be included in all
 // copies or substantial portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -35,7 +35,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/TFMV/FuzzyMatchFinder/internal/standardizer"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -85,7 +84,7 @@ func CalculateBinaryKey(referenceEntities []string, street string) string {
 }
 
 // Insert a batch of results into the database
-func InsertBatch(pool *pgxpool.Pool, batch [][2]interface{}) {
+func InsertBatch(pool *pgxpool.Pool, batch [][2]interface{}, run_id int) {
 	batchSize := len(batch)
 	ids := make([]interface{}, batchSize)
 	keys := make([]interface{}, batchSize)
@@ -96,8 +95,8 @@ func InsertBatch(pool *pgxpool.Pool, batch [][2]interface{}) {
 	}
 
 	_, err := pool.Exec(context.Background(),
-		"INSERT INTO customer_keys (customer_id, binary_key) SELECT UNNEST($1::int[]), UNNEST($2::text[])",
-		ids, keys,
+		"INSERT INTO customer_keys (customer_id, binary_key, run_id) SELECT UNNEST($1::int[]), UNNEST($2::text[]), $3",
+		ids, keys, run_id,
 	)
 	if err != nil {
 		log.Fatalf("Batch insert failed: %v\n", err)
@@ -105,7 +104,7 @@ func InsertBatch(pool *pgxpool.Pool, batch [][2]interface{}) {
 }
 
 // Process customer addresses and generate binary keys
-func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, numWorkers int) {
+func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, numWorkers int, run_id int) {
 	rows, err := pool.Query(context.Background(), "SELECT customer_id as id, customer_street as street FROM customers")
 	if err != nil {
 		log.Fatalf("Query failed: %v\n", err)
@@ -125,7 +124,7 @@ func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, nu
 				id := addr[0].(int)
 				street := addr[1].(string)
 
-				standardizedStreet, err := standardizer.StandardizeAddress(street)
+				standardizedStreet, err := StandardizeAddress(street)
 				if err != nil {
 					log.Printf("Failed to standardize address: %v\n", err)
 					continue
@@ -143,12 +142,12 @@ func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, nu
 		for res := range resultCh {
 			batch = append(batch, res)
 			if len(batch) >= batchSize {
-				InsertBatch(pool, batch)
+				InsertBatch(pool, batch, run_id)
 				batch = batch[:0] // reset batch
 			}
 		}
 		if len(batch) > 0 {
-			InsertBatch(pool, batch)
+			InsertBatch(pool, batch, run_id)
 		}
 	}()
 

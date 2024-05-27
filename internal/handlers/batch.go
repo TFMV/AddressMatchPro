@@ -27,7 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package main
+package handlers
 
 import (
 	"encoding/csv"
@@ -38,7 +38,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func matchBatchHandler(pool *pgxpool.Pool) http.HandlerFunc {
+func MatchBatchHandler(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		file, _, err := r.FormFile("file")
 		if err != nil {
@@ -48,7 +48,7 @@ func matchBatchHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		defer file.Close()
 
 		// Insert the records into the database with a unique run_id
-		runID := createNewRun(pool, "Batch Record Matching")
+		runID := matcher.CreateNewRun(pool, "Batch Record Matching")
 
 		records, err := csv.NewReader(file).ReadAll()
 		if err != nil {

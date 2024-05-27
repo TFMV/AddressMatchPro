@@ -27,29 +27,51 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package standardizer
+package matcher
 
 import (
-	"testing"
+	"regexp"
+	"strings"
 )
 
-func TestStandardizeAddress(t *testing.T) {
-	tests := []struct {
-		street   string
-		expected string
-	}{
-		{
-			street: "123 Main Street",
-		},
+// StandardizeAddress takes raw address components and returns a standardized address string.
+func StandardizeAddress(street string) (string, error) {
+	// Define common abbreviations
+	abbreviations := map[string]string{
+		"avenue":    "ave",
+		"boulevard": "blvd",
+		"circle":    "cir",
+		"court":     "ct",
+		"drive":     "dr",
+		"highway":   "hwy",
+		"lane":      "ln",
+		"place":     "pl",
+		"road":      "rd",
+		"street":    "st",
+		"terrace":   "ter",
+		"northwest": "nw",
+		"southeast": "se",
+		"southwest": "sw",
+		"northeast": "ne",
+		"unit":      "unit",
+		"ste":       "ste",
+		"apt":       "apt",
+		"floor":     "fl",
+		"po box":    "pobox", // Keep consistent with reference entities
 	}
 
-	for _, test := range tests {
-		result, err := StandardizeAddress(test.street)
-		if err != nil {
-			t.Errorf("Expected no error, but got %v", err)
-		}
-		if result != test.expected {
-			t.Errorf("Expected '%s', but got '%s'", test.expected, result)
-		}
+	// Normalize the street address by converting to lower case and trimming spaces
+	street = strings.ToLower(street)
+	street = strings.TrimSpace(street)
+
+	// Remove extra spaces within the street address
+	space := regexp.MustCompile(`\s+`)
+	street = space.ReplaceAllString(street, " ")
+
+	// Apply abbreviations
+	for longForm, shortForm := range abbreviations {
+		street = strings.ReplaceAll(street, longForm, shortForm)
 	}
+
+	return street, nil
 }
