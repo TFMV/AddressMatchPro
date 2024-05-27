@@ -27,7 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package main
+package utils
 
 import (
 	"fmt"

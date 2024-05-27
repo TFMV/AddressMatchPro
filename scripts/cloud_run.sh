@@ -1,32 +1,26 @@
 #!/bin/bash
 
-# Set variables
-PROJECT_ID="your-gcp-project-id"
-REGION="us-central1" # or any other region where you want to deploy
+# Set environment variables
+PROJECT_ID="tfmv-371720"
 SERVICE_NAME="fuzzymatchfinder"
+REGION="us-central1"
 IMAGE_NAME="gcr.io/$PROJECT_ID/$SERVICE_NAME"
-CLOUD_BUILD_CONFIG="cloudbuild.yaml"
-
-# Create cloudbuild.yaml file
-cat <<EOF > $CLOUD_BUILD_CONFIG
-steps:
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '$IMAGE_NAME', '.']
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '$IMAGE_NAME']
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'gcloud'
-    args: ['run', 'deploy', '$SERVICE_NAME', '--image', '$IMAGE_NAME', '--region', '$REGION', '--platform', 'managed', '--allow-unauthenticated', '--set-env-vars', 'CONFIG_PATH=/app/config.yaml,SCRIPT_PATH=/app/python-ml/generate_embeddings.py']
-images:
-  - '$IMAGE_NAME'
-EOF
 
 # Submit the build to Google Cloud Build
 echo "Submitting the build to Google Cloud Build..."
-gcloud builds submit --config $CLOUD_BUILD_CONFIG --project $PROJECT_ID
+gcloud builds submit --tag $IMAGE_NAME . || { echo "Error: Failed to submit build"; exit 1; }
 
-# Get the service URL
-SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region $REGION --format "value(status.url)")
-echo "Service deployed to $SERVICE_URL"
+# Deploy to Cloud Run
+echo "Deploying the service to Cloud Run..."
+gcloud run deploy $SERVICE_NAME --image $IMAGE_NAME --platform managed --region $REGION --allow-unauthenticated || { echo "Error: Failed to deploy service"; exit 1; }
 
-echo "Deployment completed successfully!"
+# Confirm deployment
+SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --platform managed --region $REGION --format 'value(status.url)')
+
+if [ -z "$SERVICE_URL" ]; then
+  echo "Error: Failed to get service URL"
+  exit 1
+else
+  echo "Service deployed successfully!"
+  echo "Service URL: $SERVICE_URL"
+fi
