@@ -10,7 +10,7 @@
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
 //
-// The above copyright notice shall be included in all
+// The above copyright notice and this permission notice shall be included in all
 // copies or substantial portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -92,8 +92,12 @@ func clearOldCandidates(pool *pgxpool.Pool) {
 }
 
 func main() {
-	// Load the configuration file
-	configPath := "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/config.yaml"
+	// Load the configuration file from the environment variable or use a default path
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		configPath = "./config.yaml" // Default path for local development
+	}
+
 	config, err := loadConfig(configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -141,7 +145,10 @@ func main() {
 	fmt.Println("TF/IDF vectors generated successfully")
 
 	// Insert vector embeddings using Python script
-	scriptPath := "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/python-ml/generate_embeddings.py"
+	scriptPath := os.Getenv("SCRIPT_PATH")
+	if scriptPath == "" {
+		scriptPath = "./python-ml/generate_embeddings.py" // Default path for local development
+	}
 	if err := generateEmbeddingsPythonScript(scriptPath, 0); err != nil {
 		log.Fatalf("Failed to generate embeddings: %v", err)
 	}
