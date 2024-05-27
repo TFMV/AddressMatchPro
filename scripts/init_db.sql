@@ -108,3 +108,9 @@ CREATE TABLE customer_vector_embedding_default PARTITION OF customer_vector_embe
 CREATE INDEX idx_customer_keys_binary_key ON customer_keys (binary_key);
 CREATE INDEX idx_customer_tokens_ngram_token ON customer_tokens (ngram_token);
 CREATE INDEX idx_tokens_idf_ngram_token ON tokens_idf (ngram_token);
+
+CREATE TABLE runs (
+    run_id SERIAL PRIMARY KEY,
+    description TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

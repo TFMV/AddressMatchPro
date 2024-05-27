@@ -187,3 +187,25 @@ func generateEmbeddingsPythonScript(scriptPath string, runID int) error {
 	}
 	return nil
 }
+
+// join converts a slice of floats to a comma-separated string
+func join(slice []float64, sep string) string {
+	str := ""
+	for i, v := range slice {
+		if i > 0 {
+			str += sep
+		}
+		str += fmt.Sprintf("%f", v)
+	}
+	return str
+}
+
+// CreateNewRun creates a new run entry in the database and returns the run ID
+func CreateNewRun(pool *pgxpool.Pool, description string) int {
+	var runID int
+	err := pool.QueryRow(context.Background(), "INSERT INTO runs (description) VALUES ($1) RETURNING run_id", description).Scan(&runID)
+	if err != nil {
+		log.Fatalf("Failed to create new run: %v\n", err)
+	}
+	return runID
+}

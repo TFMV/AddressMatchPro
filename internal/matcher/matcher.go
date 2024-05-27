@@ -1,32 +1,3 @@
-// --------------------------------------------------------------------------------
-// Author: Thomas F McGeehan V
-//
-// This file is part of a software project developed by Thomas F McGeehan V.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice shall be included in all copies or substantial
-// portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-//
-// For more information about the MIT License, please visit:
-// https://opensource.org/licenses/MIT
-//
-// Acknowledgment appreciated but not required.
-// --------------------------------------------------------------------------------
-
 package matcher
 
 import (
@@ -51,6 +22,7 @@ type MatchRequest struct {
 	TopN        int    `json:"top_n"`
 	RunID       int    `json:"run_id"`
 	ID          int    `json:"id"` // Added missing field
+	ScriptPath  string `json:"script_path"`
 }
 
 // Candidate represents a potential match
@@ -116,50 +88,55 @@ func ExtractFeatures(req MatchRequest, candidate Candidate, standardizedCandidat
 
 // FindMatches finds the best matches for a given MatchRequest
 func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candidate {
+	// Generate a new run ID for the request
+	runID := req.RunID
+	if runID == 0 {
+		runID = CreateNewRun(pool, "Single Record Matching")
+		req.RunID = runID
+	}
+
+	// Process the single record and generate embeddings
+	ProcessSingleRecord(pool, req)
+	err := generateEmbeddingsPythonScript(req.ScriptPath, runID)
+	if err != nil {
+		log.Printf("Error generating embeddings: %v\n", err)
+		return nil
+	}
+
+	// Load reference entities
+	referenceEntities := LoadReferenceEntities(pool)
+
+	// Process customer addresses for the run ID
+	ProcessCustomerAddresses(pool, referenceEntities, 10, runID)
+
+	// Standardize the request address
 	standardizedAddress, err := StandardizeAddress(req.Street)
 	if err != nil {
 		log.Printf("Failed to standardize address: %v\n", err)
 		return nil
 	}
 
-	referenceEntities := LoadReferenceEntities(pool)
+	// Calculate the binary key for the request address
 	binaryKey := CalculateBinaryKey(referenceEntities, strings.ToLower(standardizedAddress))
 
-	query := "SELECT id, first_name, last_name, phone_number, street, city, state, zip_code FROM customers WHERE binary_key = $1 AND run_id = $2"
-	rows, err := pool.Query(context.Background(), query, binaryKey, req.RunID)
+	// Find potential matches based on binary key or vector similarity
+	candidates, err := FindPotentialMatches(pool, binaryKey, nil, runID)
 	if err != nil {
-		log.Printf("Query failed: %v\n", err)
+		log.Printf("Error finding potential matches: %v\n", err)
 		return nil
 	}
-	defer rows.Close()
 
-	var candidates []Candidate
-	for rows.Next() {
-		var id int
-		var firstName, lastName, phoneNumber, street, city, state, zipCode string
-		err = rows.Scan(&id, &firstName, &lastName, &phoneNumber, &street, &city, &state, &zipCode)
-		if err != nil {
-			log.Printf("Row scan failed: %v\n", err)
-			continue
-		}
-
-		// Standardize candidate address
-		standardizedCandidateAddress, err := StandardizeAddress(street)
+	// Rank candidates based on composite score
+	for i, candidate := range candidates {
+		standardizedCandidateAddress, err := StandardizeAddress(candidate.Street)
 		if err != nil {
 			log.Printf("Failed to standardize candidate address: %v\n", err)
 			continue
 		}
 
-		features := ExtractFeatures(req, Candidate{
-			ID:       id,
-			FullName: fmt.Sprintf("%s %s", firstName, lastName),
-		}, standardizedCandidateAddress)
+		features := ExtractFeatures(req, candidate, standardizedCandidateAddress)
 		score := scorer.Score(features)
-		candidates = append(candidates, Candidate{
-			ID:       id,
-			FullName: fmt.Sprintf("%s %s", firstName, lastName),
-			Score:    score,
-		})
+		candidates[i].Score = score
 	}
 
 	// Sort candidates by score in descending order
@@ -213,18 +190,6 @@ func FindPotentialMatches(pool *pgxpool.Pool, binaryKey string, queryVector []fl
 	}
 
 	return candidates, nil
-}
-
-// join converts a slice of floats to a comma-separated string
-func join(slice []float64, sep string) string {
-	str := ""
-	for i, v := range slice {
-		if i > 0 {
-			str += sep
-		}
-		str += fmt.Sprintf("%f", v)
-	}
-	return str
 }
 
 // NewScorer returns a new instance of Scorer
