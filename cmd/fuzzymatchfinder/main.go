@@ -27,7 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package db
+package main
 
 import (
 	"context"

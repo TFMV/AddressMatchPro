@@ -35,6 +35,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -250,4 +251,27 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+func ClearOldCandidates(pool *pgxpool.Pool, runID int) {
+	tables := []string{
+		"customer_keys",
+		"customer_tokens",
+		"customer_vector_embedding",
+	}
+	for _, table := range tables {
+		query := fmt.Sprintf("DELETE FROM %s WHERE run_id = $1", table)
+		if _, err := pool.Exec(context.Background(), query, runID); err != nil {
+			fmt.Printf("Failed to clear old candidates from %s: %v\n", table, err)
+		}
+	}
+}
+
+func GenerateEmbeddingsPythonScript(scriptPath string, runID int) error {
+	cmd := exec.Command("python3", scriptPath, strconv.Itoa(runID))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error running Python script: %v, output: %s", err, string(output))
+	}
+	return nil
 }
