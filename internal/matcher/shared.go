@@ -10,8 +10,8 @@
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
 //
-// The above copyright notice shall be included in all
-// copies or substantial portions of the Software.
+// The above copyright notice shall be included in all copies or substantial
+// portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -31,7 +31,9 @@ package matcher
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"os/exec"
 	"strings"
 	"sync"
 
@@ -164,4 +166,24 @@ func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, nu
 	close(addressCh)
 	wg.Wait()
 	close(resultCh)
+}
+
+// ProcessSingleRecord processes a single record and inserts it into the database
+func ProcessSingleRecord(pool *pgxpool.Pool, req MatchRequest) {
+	_, err := pool.Exec(context.Background(),
+		"INSERT INTO customer_matching (first_name, last_name, phone_number, street, city, state, zip_code, run_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+		req.FirstName, req.LastName, req.PhoneNumber, req.Street, req.City, req.State, req.ZipCode, req.RunID)
+	if err != nil {
+		fmt.Printf("Failed to process single record: %v\n", err)
+	}
+}
+
+// generateEmbeddingsPythonScript runs the Python script to generate embeddings for a given run ID
+func generateEmbeddingsPythonScript(scriptPath string, runID int) error {
+	cmd := exec.Command("python3", scriptPath, fmt.Sprintf("--run_id=%d", runID))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error running Python script: %v, output: %s", err, string(output))
+	}
+	return nil
 }
