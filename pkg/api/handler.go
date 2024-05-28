@@ -31,6 +31,8 @@ package api
 
 import (
 	"encoding/csv"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -40,12 +42,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// MatchSingleHandler handles single match requests
 func MatchSingleHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req matcher.MatchRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			utils.SendError(c.Writer, http.StatusBadRequest, err)
+		if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -53,13 +54,26 @@ func MatchSingleHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 		runID := matcher.CreateNewRun(pool, "Single Record Matching")
 		req.RunID = runID
 
-		// Process the record and generate keys/vectors
-		matcher.ProcessSingleRecord(pool, req)
+		// Process the single record
+		if err := matcher.ProcessSingleRecord(pool, req); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to insert single record: %v", err)})
+			return
+		}
+
+		// Generate TF/IDF vectors for the single record
+		matcher.GenerateTFIDF(pool, runID)
+
+		// Insert vector embeddings using Python script
+		scriptPath := "./python-ml/generate_embeddings.py"
+		if err := matcher.GenerateEmbeddingsPythonScript(scriptPath, runID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to generate embeddings: %v", err)})
+			return
+		}
 
 		// Find matches
 		candidates := matcher.FindMatches(req, matcher.NewScorer(), pool)
 
-		utils.SendJSON(c.Writer, http.StatusOK, "Matches found successfully", candidates)
+		c.JSON(http.StatusOK, candidates)
 	}
 }
 

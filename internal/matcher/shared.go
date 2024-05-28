@@ -183,14 +183,18 @@ func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, nu
 }
 
 // ProcessSingleRecord processes a single record and inserts it into the database
-func ProcessSingleRecord(pool *pgxpool.Pool, req MatchRequest) {
+func ProcessSingleRecord(pool *pgxpool.Pool, req MatchRequest) error {
 	_, err := pool.Exec(context.Background(),
 		"INSERT INTO customer_matching (first_name, last_name, phone_number, street, city, state, zip_code, run_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
 		strings.ToLower(req.FirstName), strings.ToLower(req.LastName), strings.ToLower(req.PhoneNumber),
 		strings.ToLower(req.Street), strings.ToLower(req.City), strings.ToLower(req.State), strings.ToLower(req.ZipCode), req.RunID)
+
 	if err != nil {
-		fmt.Printf("Failed to process single record: %v\n", err)
+		log.Printf("Failed to insert single record: %v\n", err)
+		return err
 	}
+
+	return nil
 }
 
 // Generate embeddings using Python script

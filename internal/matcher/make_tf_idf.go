@@ -39,6 +39,7 @@ import (
 	"github.com/jdkato/prose/v2"
 )
 
+// Standardize the street address
 func standardizeStreet(street string) string {
 	standardizedStreet, err := StandardizeAddress(street)
 	if err != nil {
@@ -47,6 +48,7 @@ func standardizeStreet(street string) string {
 	return standardizedStreet
 }
 
+// Tokenize the given text
 func tokenize(text string) []string {
 	doc, err := prose.NewDocument(text)
 	if err != nil {
@@ -59,6 +61,7 @@ func tokenize(text string) []string {
 	return tokens
 }
 
+// Calculate IDF for tokens
 func calculateIDF(totalDocs int, docFreq map[string]int) map[string]float64 {
 	idf := make(map[string]float64, len(docFreq))
 	for token, freq := range docFreq {
@@ -67,6 +70,7 @@ func calculateIDF(totalDocs int, docFreq map[string]int) map[string]float64 {
 	return idf
 }
 
+// Generate candidate IDF
 func generateCandidateIDF(pool *pgxpool.Pool) map[string]float64 {
 	rows, err := pool.Query(context.Background(), "SELECT customer_id, lower(first_name) || ' ' || lower(last_name) as name, lower(street) as street FROM customer_matching WHERE run_id = 0")
 	if err != nil {
@@ -121,14 +125,13 @@ func generateCandidateIDF(pool *pgxpool.Pool) map[string]float64 {
 			}
 
 			mu.Lock()
-			defer mu.Unlock()
-
 			for token := range nameTokenFreq {
 				docFreq[token]++
 			}
 			for token := range streetTokenFreq {
 				docFreq[token]++
 			}
+			mu.Unlock()
 			<-sem
 		}(customer)
 	}
@@ -138,6 +141,7 @@ func generateCandidateIDF(pool *pgxpool.Pool) map[string]float64 {
 	return calculateIDF(totalDocs, docFreq)
 }
 
+// Generate TF/IDF vectors and insert them into the database
 func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
 	idf := generateCandidateIDF(pool)
 	rows, err := pool.Query(context.Background(), "SELECT customer_id, lower(first_name) || ' ' || lower(last_name) as name, lower(street) as street FROM customer_matching WHERE run_id = $1", runID)
@@ -197,8 +201,6 @@ func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
 			}
 
 			mu.Lock()
-			defer mu.Unlock()
-
 			for token, freq := range nameTokenFreq {
 				tf := float64(freq) / float64(len(nameTokens))
 				tfIdf := tf * idf[token]
@@ -229,6 +231,7 @@ func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
 					TfIdf:      tfIdf,
 				})
 			}
+			mu.Unlock()
 			<-sem
 		}(customer)
 	}

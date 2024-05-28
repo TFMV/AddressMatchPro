@@ -49,9 +49,9 @@ func MatchSingleHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		// Insert the single record into the database with a unique run_id
 		runID := matcher.CreateNewRun(pool, "Single Record Matching")
 		req.RunID = runID
-
+		fmt.Println("runID: ", runID)
 		// Clear existing entries for this run_id
-		clearOldCandidates(pool, runID)
+		matcher.ClearOldCandidates(pool, runID)
 
 		// Process the single record
 		matcher.ProcessSingleRecord(pool, req)
@@ -61,7 +61,7 @@ func MatchSingleHandler(pool *pgxpool.Pool) http.HandlerFunc {
 
 		// Insert vector embeddings using Python script
 		scriptPath := "./python-ml/generate_embeddings.py"
-		if err := generateEmbeddingsPythonScript(scriptPath, runID); err != nil {
+		if err := matcher.GenerateEmbeddingsPythonScript(scriptPath, runID); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to generate embeddings: %v", err), http.StatusInternalServerError)
 			return
 		}

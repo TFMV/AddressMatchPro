@@ -37,6 +37,7 @@ import (
 	"github.com/TFMV/FuzzyMatchFinder/pkg/api"
 	"github.com/TFMV/FuzzyMatchFinder/pkg/config"
 	"github.com/TFMV/FuzzyMatchFinder/pkg/db"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -63,7 +64,7 @@ func main() {
 	}
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Panic(err)
 	}
 	fmt.Println("Config loaded successfully")
 

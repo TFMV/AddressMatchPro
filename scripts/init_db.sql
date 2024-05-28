@@ -42,7 +42,6 @@ DROP TABLE IF EXISTS customer_keys_run_0;
 DROP TABLE IF EXISTS customer_keys;
 DROP TABLE IF EXISTS customer_matching;
 
--- Create customer_matching table
 CREATE TABLE customer_matching (
     customer_id SERIAL PRIMARY KEY,
     first_name TEXT,
@@ -55,8 +54,7 @@ CREATE TABLE customer_matching (
     run_id INT
 );
 
--- unique index on customer_matching customer_id and run_id
-CREATE UNIQUE INDEX idx_customer_matching_customer_id_run_id ON customer_matching (customer_id, run_id);
+CREATE INDEX idx_run_id ON customer_matching(run_id);
 
 -- Create customer_keys table partitioned by run_id
 CREATE TABLE customer_keys (
@@ -114,3 +112,6 @@ CREATE TABLE runs (
     description TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+
+SELECT setval(pg_get_serial_sequence('customer_matching', 'customer_id'), COALESCE((SELECT MAX(customer_id) FROM customer_matching), 1), false);
