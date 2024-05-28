@@ -118,7 +118,7 @@ func ExtractFeatures(req MatchRequest, candidate Candidate, standardizedCandidat
 func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candidate {
 
 	// Find potential matches based on binary key or vector similarity
-	candidates, err := FindPotentialMatches(pool, runID)
+	candidates, err := FindPotentialMatches(pool, req.RunID)
 	if err != nil {
 		log.Printf("Error finding potential matches: %v\n", err)
 		return nil

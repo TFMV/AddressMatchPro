@@ -36,7 +36,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
+	"github.com/TFMV/AddressMatchPro/internal/matcher"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -95,7 +95,7 @@ func main() {
 	// Load the configuration
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		configPath = "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/config.yaml" // Default path for local development
+		configPath = "/Users/thomasmcgeehan/AddressMatchPro/AddressMatchPro/config.yaml" // Default path for local development
 	}
 
 	config, err := matcher.LoadConfig(configPath)
@@ -162,7 +162,7 @@ func main() {
 	stepStart = time.Now()
 	scriptPath := os.Getenv("SCRIPT_PATH")
 	if scriptPath == "" {
-		scriptPath = "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/python-ml/generate_embeddings.py"
+		scriptPath = "/Users/thomasmcgeehan/AddressMatchPro/AddressMatchPro/python-ml/generate_embeddings.py"
 	}
 	if err := matcher.GenerateEmbeddingsPythonScript(scriptPath, 0); err != nil {
 		log.Fatalf("Failed to generate embeddings: %v", err)

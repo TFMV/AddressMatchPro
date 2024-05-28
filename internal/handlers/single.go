@@ -35,7 +35,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
+	"github.com/TFMV/AddressMatchPro/internal/matcher"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -64,7 +64,7 @@ func MatchSingleHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		matcher.GenerateTFIDF(pool, runID)
 
 		// Set the script path
-		scriptPath := "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/python-ml/generate_embeddings.py"
+		scriptPath := "/Users/thomasmcgeehan/AddressMatchPro/AddressMatchPro/python-ml/generate_embeddings.py"
 
 		// Log script execution
 		log.Printf("Setting script path: %s", scriptPath)

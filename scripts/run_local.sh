@@ -1,6 +1,9 @@
 !#/bin/bash
 
-export CONFIG_PATH=/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/config.yaml
-export SCRIPT_PATH=/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/python-ml/generate_embeddings.py
+export CONFIG_PATH=/Users/thomasmcgeehan/AddressMatchPro/AddressMatchPro/config.yaml
+export SCRIPT_PATH=/Users/thomasmcgeehan/AddressMatchPro/AddressMatchPro/python-ml/generate_embeddings.py
 
-go run /Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/cmd/fuzzymatchfinder/main.go
+python -m spacy download en_core_web_md
+
+go run /Users/thomasmcgeehan/AddressMatchPro/AddressMatchPro/cmd/addressmatchpro/main.go
+

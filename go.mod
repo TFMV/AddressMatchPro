@@ -1,22 +1,13 @@
-module github.com/TFMV/FuzzyMatchFinder
+module github.com/TFMV/AddressMatchPro
 
 go 1.22.3
 
 require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/jackc/pgx/v5 v5.5.5
-	github.com/jdkato/prose/v2 v2.0.0
 	github.com/swaggo/swag v1.16.3
 	gonum.org/v1/gonum v0.15.0
 	gopkg.in/yaml.v2 v2.4.0
-)
-
-require (
-	github.com/deckarep/golang-set v1.7.1 // indirect
-	github.com/mingrammer/commonregex v1.0.1 // indirect
-	github.com/rogpeppe/go-internal v1.12.0 // indirect
-	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
-	gopkg.in/neurosnap/sentences.v1 v1.0.6 // indirect
 )
 
 require (
@@ -47,10 +38,12 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
+	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/crypto v0.23.0 // indirect
+	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
 	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/sys v0.20.0 // indirect

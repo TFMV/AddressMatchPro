@@ -36,8 +36,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
-	"github.com/TFMV/FuzzyMatchFinder/pkg/utils"
+	"github.com/TFMV/AddressMatchPro/internal/matcher"
+	"github.com/TFMV/AddressMatchPro/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

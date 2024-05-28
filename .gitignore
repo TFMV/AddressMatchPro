@@ -24,4 +24,6 @@ data/
 
 myenv/
 
+venv/
+
 .DS_Store

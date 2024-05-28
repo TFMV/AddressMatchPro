@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build the Go application
-RUN go build -o fuzzymatchfinder ./cmd/fuzzymatchfinder
+RUN go build -o addressmatchpro ./cmd/addressmatchpro
 
 # Stage 2: Create a minimal image with the Go binary
 FROM python:3.10-slim-buster
@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the binary from the builder stage
-COPY --from=builder /app/fuzzymatchfinder .
+COPY --from=builder /app/addressmatchpro .
 COPY config.yaml . 
 
 # Create a virtual environment and install Python dependencies
@@ -43,4 +43,4 @@ RUN /app/venv/bin/pip install --no-cache-dir -r /app/python-ml/requirements.txt
 EXPOSE 8080
 
 # Run the binary
-CMD ["./fuzzymatchfinder"]
+CMD ["./addressmatchpro"]
