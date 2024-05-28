@@ -106,7 +106,7 @@ func main() {
 	// Load the configuration
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		configPath = "./config.yaml" // Default path for local development
+		configPath = "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/config.yaml" // Default path for local development
 	}
 
 	config, err := matcher.LoadConfig(configPath)
