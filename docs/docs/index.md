@@ -1,6 +1,6 @@
-# Welcome to FuzzyMatchFinder
+# Welcome to AddressMatchPro
 
-FuzzyMatchFinder is an advanced entity matching solution using machine learning to provide approximate matching.
+AddressMatchPro is an advanced entity matching solution using machine learning to provide approximate matching.
 
 ## Features
 

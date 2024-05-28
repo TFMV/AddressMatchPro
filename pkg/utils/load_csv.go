@@ -39,7 +39,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
+	"github.com/TFMV/AddressMatchPro/internal/matcher"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

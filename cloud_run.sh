@@ -2,7 +2,7 @@
 
 # Set environment variables
 PROJECT_ID="tfmv-371720"
-SERVICE_NAME="fuzzymatchfinder"
+SERVICE_NAME="addressmatchpro"
 REGION="us-central1"
 IMAGE_NAME="gcr.io/$PROJECT_ID/$SERVICE_NAME"
 

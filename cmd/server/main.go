@@ -34,16 +34,16 @@ import (
 	"log"
 	"os"
 
-	"github.com/TFMV/FuzzyMatchFinder/pkg/api"
-	"github.com/TFMV/FuzzyMatchFinder/pkg/config"
-	"github.com/TFMV/FuzzyMatchFinder/pkg/db"
+	"github.com/TFMV/AddressMatchPro/pkg/api"
+	"github.com/TFMV/AddressMatchPro/pkg/config"
+	"github.com/TFMV/AddressMatchPro/pkg/db"
 
 	"github.com/gin-gonic/gin"
 )
 
-// @title FuzzyMatchFinder API
+// @title AddressMatchPro API
 // @version 1.0
-// @description This is a FuzzyMatchFinder server.
+// @description This is a AddressMatchPro server.
 // @termsOfService http://swagger.io/terms/
 
 // @contact.name API Support
@@ -60,7 +60,7 @@ func main() {
 	// Load configuration
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		configPath = "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/config.yaml"
+		configPath = "/Users/thomasmcgeehan/AddressMatchPro/AddressMatchPro/config.yaml"
 	}
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {

@@ -1,6 +1,6 @@
 # Getting Started
 
-Welcome to FuzzyMatchFinder! This guide will help you set up the project and get it running on your local machine.
+Welcome to AddressMatchPro! This guide will help you set up the project and get it running on your local machine.
 
 ## Prerequisites
 
@@ -14,9 +14,9 @@ Before you begin, ensure you have the following installed on your machine:
 
 ## Clone the Repository
 
-First, clone the FuzzyMatchFinder repository:
+First, clone the AddressMatchPro repository:
 
 ```bash
-git clone https://github.com/TFMV/FuzzyMatchFinder.git
-cd FuzzyMatchFinder
+git clone https://github.com/TFMV/AddressMatchPro.git
+cd AddressMatchPro
 ```
