@@ -64,7 +64,7 @@ func MatchSingleHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 		matcher.GenerateTFIDF(pool, runID)
 
 		// Insert vector embeddings using Python script
-		scriptPath := "./python-ml/generate_embeddings.py"
+		scriptPath := "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/python-ml/generate_embeddings.py"
 		if err := matcher.GenerateEmbeddingsPythonScript(scriptPath, runID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to generate embeddings: %v", err)})
 			return

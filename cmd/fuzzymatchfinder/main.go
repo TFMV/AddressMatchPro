@@ -34,22 +34,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
-	"strconv"
 	"time"
 
 	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-func generateEmbeddingsPythonScript(scriptPath string, runID int) error {
-	cmd := exec.Command("python3", scriptPath, strconv.Itoa(runID))
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error running Python script: %v, output: %s", err, string(output))
-	}
-	return nil
-}
 
 func clearOldCandidates(pool *pgxpool.Pool) {
 	tables := []string{
@@ -175,7 +164,7 @@ func main() {
 	if scriptPath == "" {
 		scriptPath = "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/python-ml/generate_embeddings.py"
 	}
-	if err := generateEmbeddingsPythonScript(scriptPath, 0); err != nil {
+	if err := matcher.GenerateEmbeddingsPythonScript(scriptPath, 0); err != nil {
 		log.Fatalf("Failed to generate embeddings: %v", err)
 	}
 	fmt.Printf("Vector embeddings generated in %v\n", time.Since(stepStart))

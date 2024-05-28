@@ -35,6 +35,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -119,9 +120,10 @@ func InsertBatch(pool *pgxpool.Pool, batch [][2]interface{}, runID int) {
 	}
 }
 
-// Process customer addresses and generate binary keys
+// ProcessCustomerAddresses processes customer addresses and generates binary keys
 func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, numWorkers int, runID int) {
-	rows, err := pool.Query(context.Background(), "SELECT customer_id as id, customer_street as street FROM customers")
+	// Query the customer_matching table with the specified run_id
+	rows, err := pool.Query(context.Background(), "SELECT customer_id, street FROM customer_matching WHERE run_id = $1", runID)
 	if err != nil {
 		log.Fatalf("Query failed: %v\n", err)
 	}
@@ -197,16 +199,6 @@ func ProcessSingleRecord(pool *pgxpool.Pool, req MatchRequest) error {
 	return nil
 }
 
-// Generate embeddings using Python script
-func generateEmbeddingsPythonScript(scriptPath string, runID int) error {
-	cmd := exec.Command("python3", scriptPath, fmt.Sprintf("--run_id=%d", runID))
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error running Python script: %v, output: %s", err, string(output))
-	}
-	return nil
-}
-
 // Join converts a slice of floats to a comma-separated string
 func join(slice []float64, sep string) string {
 	str := ""
@@ -271,10 +263,27 @@ func ClearOldCandidates(pool *pgxpool.Pool, runID int) {
 	}
 }
 
+// GenerateEmbeddingsPythonScript runs the Python script to generate embeddings.
 func GenerateEmbeddingsPythonScript(scriptPath string, runID int) error {
-	cmd := exec.Command("python3", scriptPath, strconv.Itoa(runID))
+	// Ensure the script path is absolute
+	absScriptPath, err := filepath.Abs(scriptPath)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path for script: %v", err)
+	}
+
+	// Set the working directory to the script's directory
+	scriptDir := filepath.Dir(absScriptPath)
+
+	cmd := exec.Command("python3", absScriptPath, strconv.Itoa(runID))
+	cmd.Dir = scriptDir
+
+	// Log the absolute script path and current working directory
+	log.Printf("Running Python script: %s", absScriptPath)
+	log.Printf("Set working directory to: %s", scriptDir)
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		log.Printf("Error generating embeddings: error running Python script: %v, output: %s", err, string(output))
 		return fmt.Errorf("error running Python script: %v, output: %s", err, string(output))
 	}
 	return nil
