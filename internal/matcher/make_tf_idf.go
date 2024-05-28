@@ -33,10 +33,11 @@ import (
 	"context"
 	"log"
 	"math"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jdkato/prose/v2"
 )
 
 // Standardize the street address
@@ -48,17 +49,17 @@ func standardizeStreet(street string) string {
 	return standardizedStreet
 }
 
-// Tokenize the given text
-func tokenize(text string) []string {
-	doc, err := prose.NewDocument(text)
-	if err != nil {
-		log.Fatal(err)
+// Generate trigrams (3-grams) from a given text
+func generateTrigrams(text string) []string {
+	runes := []rune(text)
+	if len(runes) < 3 {
+		return []string{text}
 	}
-	tokens := make([]string, 0, len(doc.Tokens()))
-	for _, tok := range doc.Tokens() {
-		tokens = append(tokens, tok.Text)
+	trigrams := make([]string, 0, len(runes)-2)
+	for i := 0; i < len(runes)-2; i++ {
+		trigrams = append(trigrams, string(runes[i:i+3]))
 	}
-	return tokens
+	return trigrams
 }
 
 // Calculate IDF for tokens
@@ -70,8 +71,8 @@ func calculateIDF(totalDocs int, docFreq map[string]int) map[string]float64 {
 	return idf
 }
 
-// Generate candidate IDF
-func generateCandidateIDF(pool *pgxpool.Pool) map[string]float64 {
+// Generate candidate IDF and insert into tokens_idf
+func generateCandidateIDF(pool *pgxpool.Pool, runID int) map[string]float64 {
 	rows, err := pool.Query(context.Background(), "SELECT customer_id, lower(first_name) || ' ' || lower(last_name) as name, lower(street) as street FROM customer_matching WHERE run_id = 0")
 	if err != nil {
 		log.Fatal(err)
@@ -111,25 +112,25 @@ func generateCandidateIDF(pool *pgxpool.Pool) map[string]float64 {
 			defer wg.Done()
 			sem <- struct{}{}
 
-			nameTokens := tokenize(c.Name)
-			streetTokens := tokenize(c.Street)
+			nameTrigrams := generateTrigrams(c.Name)
+			streetTrigrams := generateTrigrams(c.Street)
 
-			nameTokenFreq := make(map[string]int, len(nameTokens))
-			streetTokenFreq := make(map[string]int, len(streetTokens))
+			nameTrigramFreq := make(map[string]int, len(nameTrigrams))
+			streetTrigramFreq := make(map[string]int, len(streetTrigrams))
 
-			for _, token := range nameTokens {
-				nameTokenFreq[token]++
+			for _, trigram := range nameTrigrams {
+				nameTrigramFreq[trigram]++
 			}
-			for _, token := range streetTokens {
-				streetTokenFreq[token]++
+			for _, trigram := range streetTrigrams {
+				streetTrigramFreq[trigram]++
 			}
 
 			mu.Lock()
-			for token := range nameTokenFreq {
-				docFreq[token]++
+			for trigram := range nameTrigramFreq {
+				docFreq[trigram]++
 			}
-			for token := range streetTokenFreq {
-				docFreq[token]++
+			for trigram := range streetTrigramFreq {
+				docFreq[trigram]++
 			}
 			mu.Unlock()
 			<-sem
@@ -138,12 +139,37 @@ func generateCandidateIDF(pool *pgxpool.Pool) map[string]float64 {
 
 	wg.Wait()
 
-	return calculateIDF(totalDocs, docFreq)
+	idf := calculateIDF(totalDocs, docFreq)
+
+	ctx := context.Background()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+
+	insertTokensIDF := "INSERT INTO tokens_idf (entity_type_id, ngram_token, ngram_idf, run_id) VALUES ($1, $2, $3, $4)"
+	for token, idfValue := range idf {
+		entityTypeID := 1 // Default to street entity type
+		if strings.Contains(token, " ") {
+			entityTypeID = 2 // Name entity type
+		}
+		_, err := tx.Exec(ctx, insertTokensIDF, entityTypeID, token, idfValue, runID)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		log.Fatal(err)
+	}
+
+	return idf
 }
 
 // Generate TF/IDF vectors and insert them into the database
 func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
-	idf := generateCandidateIDF(pool)
+	idf := generateCandidateIDF(pool, runID)
 	rows, err := pool.Query(context.Background(), "SELECT customer_id, lower(first_name) || ' ' || lower(last_name) as name, lower(street) as street FROM customer_matching WHERE run_id = $1", runID)
 	if err != nil {
 		log.Fatal(err)
@@ -179,7 +205,7 @@ func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
 
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 50)
+	sem := make(chan struct{}, 10)
 
 	for _, customer := range customers {
 		wg.Add(1)
@@ -187,23 +213,23 @@ func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
 			defer wg.Done()
 			sem <- struct{}{}
 
-			nameTokens := tokenize(c.Name)
-			streetTokens := tokenize(c.Street)
+			nameTrigrams := generateTrigrams(c.Name)
+			streetTrigrams := generateTrigrams(c.Street)
 
-			nameTokenFreq := make(map[string]int, len(nameTokens))
-			streetTokenFreq := make(map[string]int, len(streetTokens))
+			nameTrigramFreq := make(map[string]int, len(nameTrigrams))
+			streetTrigramFreq := make(map[string]int, len(streetTrigrams))
 
-			for _, token := range nameTokens {
-				nameTokenFreq[token]++
+			for _, trigram := range nameTrigrams {
+				nameTrigramFreq[trigram]++
 			}
-			for _, token := range streetTokens {
-				streetTokenFreq[token]++
+			for _, trigram := range streetTrigrams {
+				streetTrigramFreq[trigram]++
 			}
 
 			mu.Lock()
-			for token, freq := range nameTokenFreq {
-				tf := float64(freq) / float64(len(nameTokens))
-				tfIdf := tf * idf[token]
+			for trigram, freq := range nameTrigramFreq {
+				tf := float64(freq) / float64(len(nameTrigrams))
+				tfIdf := tf * idf[trigram]
 				customerTokens = append(customerTokens, struct {
 					CustomerID int
 					EntityType int
@@ -212,13 +238,13 @@ func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
 				}{
 					CustomerID: c.ID,
 					EntityType: 2,
-					Token:      token,
+					Token:      trigram,
 					TfIdf:      tfIdf,
 				})
 			}
-			for token, freq := range streetTokenFreq {
-				tf := float64(freq) / float64(len(streetTokens))
-				tfIdf := tf * idf[token]
+			for trigram, freq := range streetTrigramFreq {
+				tf := float64(freq) / float64(len(streetTrigrams))
+				tfIdf := tf * idf[trigram]
 				customerTokens = append(customerTokens, struct {
 					CustomerID int
 					EntityType int
@@ -227,7 +253,7 @@ func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
 				}{
 					CustomerID: c.ID,
 					EntityType: 1,
-					Token:      token,
+					Token:      trigram,
 					TfIdf:      tfIdf,
 				})
 			}
@@ -237,6 +263,11 @@ func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
 	}
 
 	wg.Wait()
+
+	// Sort customerTokens by CustomerID for better performance during insertion
+	sort.Slice(customerTokens, func(i, j int) bool {
+		return customerTokens[i].CustomerID < customerTokens[j].CustomerID
+	})
 
 	ctx := context.Background()
 	tx, err := pool.Begin(ctx)

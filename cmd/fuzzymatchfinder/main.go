@@ -173,7 +173,7 @@ func main() {
 	stepStart = time.Now()
 	scriptPath := os.Getenv("SCRIPT_PATH")
 	if scriptPath == "" {
-		scriptPath = "./python-ml/generate_embeddings.py" // Default path for local development
+		scriptPath = "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/python-ml/generate_embeddings.py"
 	}
 	if err := generateEmbeddingsPythonScript(scriptPath, 0); err != nil {
 		log.Fatalf("Failed to generate embeddings: %v", err)
