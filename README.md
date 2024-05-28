@@ -1,14 +1,14 @@
-# FuzzyMatchFinder
+# AddressMatchPro
 
-![FuzzyMatchFinder](assets/FuzzyMatchFinder.webp)
+![AddressMatchPro](assets/FuzzyMatchFinder.webp)
 
 ## 🚧 Under Construction 🚧
 
-Welcome to FuzzyMatchFinder! This project is currently under development, but we're excited to share our progress and goals with you. Stay tuned for updates!
+Welcome to AddressMatchPro! This project is currently under development, but we're excited to share our progress and goals with you. Stay tuned for updates!
 
 ## Project Overview
 
-FuzzyMatchFinder is an advanced entity matching solution leveraging machine learning to provide approximate matching. Our approach combines traditional algorithms with modern machine learning techniques to deliver high-accuracy matching results.
+AddressMatchPro is an advanced entity matching solution leveraging machine learning to provide approximate matching. Our approach combines traditional algorithms with modern machine learning techniques to deliver high-accuracy matching results.
 
 ## Approach
 
