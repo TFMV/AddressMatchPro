@@ -72,7 +72,7 @@ CREATE TABLE customer_tokens (
     customer_id INT,
     entity_type_id INT,
     ngram_token TEXT,
-    ngram_frequency INT,
+    ngram_tfidf FLOAT8,
     run_id INT NOT NULL,
     FOREIGN KEY (customer_id) REFERENCES customer_matching (customer_id)
 ) PARTITION BY LIST (run_id);
