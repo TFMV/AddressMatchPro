@@ -59,12 +59,13 @@ AddressMatchPro is an advanced entity matching solution leveraging machine learn
 - [x] Develop endpoint for single record matching.
 - [x] Develop endpoint for batch record matching.
 - [x] Implement middleware for request validation and logging.
+- [x] Implement Fast CSV Loader
 - [ ] Develop utility functions for response formatting.
 
 ### Phase 4: Testing and Optimization
 
 - [ ] Write unit and integration tests.
-- [ ] Optimize matching algorithms for performance.
+- [x] Optimize matching algorithms for performance.
 - [ ] Perform load testing and scalability improvements.
 
 ### Phase 5: Deployment
@@ -75,7 +76,7 @@ AddressMatchPro is an advanced entity matching solution leveraging machine learn
 
 ## Get Involved
 
-We welcome contributions and feedback from the community. Feel free to open issues or submit pull requests as we work towards our milestones. Let's make FuzzyMatchFinder the best entity matching solution together!
+We welcome contributions and feedback from the community. Feel free to open issues or submit pull requests as we work towards our milestones. Let's make AddressMatchPro the best entity matching solution together!
 
 ## License
 
