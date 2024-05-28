@@ -1,12 +1,12 @@
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/tfmv-371720/fuzzymatchfinder', '.']
+    args: ['build', '-t', 'gcr.io/tfmv-371720/addressmatchpro', '.']
     dir: '.'
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/tfmv-371720/fuzzymatchfinder']
+    args: ['push', 'gcr.io/tfmv-371720/addressmatchpro']
     dir: '.'
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'gcloud'
-    args: ['run', 'deploy', 'fuzzymatchfinder', '--image', 'gcr.io/tfmv-371720/fuzzymatchfinder', '--region', 'us-central1', '--platform', 'managed', '--allow-unauthenticated', '--set-env-vars', 'CONFIG_PATH=/app/config.yaml,SCRIPT_PATH=/app/python-ml/generate_embeddings.py']
+    args: ['run', 'deploy', 'addressmatchpro', '--image', 'gcr.io/tfmv-371720/addressmatchpro', '--region', 'us-central1', '--platform', 'managed', '--allow-unauthenticated', '--set-env-vars', 'CONFIG_PATH=/app/config.yaml,SCRIPT_PATH=/app/python-ml/generate_embeddings.py']
 images:
-  - 'gcr.io/tfmv-371720/fuzzymatchfinder'
+  - 'gcr.io/tfmv-371720/addressmatchpro'
