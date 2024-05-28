@@ -31,7 +31,6 @@ package matcher
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sort"
 	"strings"
@@ -117,39 +116,9 @@ func ExtractFeatures(req MatchRequest, candidate Candidate, standardizedCandidat
 
 // FindMatches finds the best matches for a given MatchRequest
 func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candidate {
-	// Generate a new run ID for the request
-	runID := req.RunID
-	if runID == 0 {
-		runID = CreateNewRun(pool, "Single Record Matching")
-		req.RunID = runID
-	}
-
-	// Process the single record and generate embeddings
-	ProcessSingleRecord(pool, req)
-	err := generateEmbeddingsPythonScript(req.ScriptPath, runID)
-	if err != nil {
-		log.Printf("Error generating embeddings: %v\n", err)
-		return nil
-	}
-
-	// Load reference entities
-	referenceEntities := LoadReferenceEntities(pool)
-
-	// Process customer addresses for the run ID
-	ProcessCustomerAddresses(pool, referenceEntities, 10, runID)
-
-	// Standardize the request address
-	standardizedAddress, err := StandardizeAddress(req.Street)
-	if err != nil {
-		log.Printf("Failed to standardize address: %v\n", err)
-		return nil
-	}
-
-	// Calculate the binary key for the request address
-	binaryKey := CalculateBinaryKey(referenceEntities, strings.ToLower(standardizedAddress))
 
 	// Find potential matches based on binary key or vector similarity
-	candidates, err := FindPotentialMatches(pool, binaryKey, nil, runID)
+	candidates, err := FindPotentialMatches(pool, runID)
 	if err != nil {
 		log.Printf("Error finding potential matches: %v\n", err)
 		return nil
@@ -181,9 +150,7 @@ func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candida
 }
 
 // FindPotentialMatches finds potential matches based on binary key or vector similarity
-func FindPotentialMatches(pool *pgxpool.Pool, binaryKey string, queryVector []float64, runID int) ([]Candidate, error) {
-	// Convert the query vector to a string
-	queryVectorStr := fmt.Sprintf("'{%s}'", join(queryVector, ", "))
+func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 
 	// SQL query to find potential matches
 	query := `
@@ -196,7 +163,7 @@ func FindPotentialMatches(pool *pgxpool.Pool, binaryKey string, queryVector []fl
 	`
 
 	// Execute the query
-	rows, err := pool.Query(context.Background(), query, binaryKey, queryVectorStr, runID)
+	rows, err := pool.Query(context.Background(), query, runID)
 	if err != nil {
 		return nil, err
 	}

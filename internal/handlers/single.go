@@ -32,6 +32,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/TFMV/FuzzyMatchFinder/internal/matcher"
@@ -49,18 +50,24 @@ func MatchSingleHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		// Insert the single record into the database with a unique run_id
 		runID := matcher.CreateNewRun(pool, "Single Record Matching")
 		req.RunID = runID
-		fmt.Println("runID: ", runID)
-		// Clear existing entries for this run_id
-		matcher.ClearOldCandidates(pool, runID)
 
 		// Process the single record
-		matcher.ProcessSingleRecord(pool, req)
+		if err := matcher.ProcessSingleRecord(pool, req); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to process single record: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		referenceEntities := matcher.LoadReferenceEntities(pool)
+		matcher.ProcessCustomerAddresses(pool, referenceEntities, 10, runID)
 
 		// Generate TF/IDF vectors for the single record
 		matcher.GenerateTFIDF(pool, runID)
 
-		// Insert vector embeddings using Python script
-		scriptPath := "./python-ml/generate_embeddings.py"
+		// Set the script path
+		scriptPath := "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/python-ml/generate_embeddings.py"
+
+		// Log script execution
+		log.Printf("Setting script path: %s", scriptPath)
 		if err := matcher.GenerateEmbeddingsPythonScript(scriptPath, runID); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to generate embeddings: %v", err), http.StatusInternalServerError)
 			return

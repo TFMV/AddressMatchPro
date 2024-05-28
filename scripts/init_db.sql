@@ -115,3 +115,95 @@ CREATE TABLE runs (
 
 
 SELECT setval(pg_get_serial_sequence('customer_matching', 'customer_id'), COALESCE((SELECT MAX(customer_id) FROM customer_matching), 1), false);
+
+
+ WITH embeddings AS (
+    SELECT customer_id, vector_embedding
+    FROM customer_vector_embedding
+    WHERE run_id = 23
+),
+matching_embeddings AS (
+    SELECT
+        cv0.customer_id,
+        cv0.vector_embedding,
+        e.customer_id AS matched_customer_id,
+        e.vector_embedding AS matched_vector_embedding,
+        cv0.vector_embedding <=> e.vector_embedding AS similarity
+    FROM
+        customer_vector_embedding cv0
+    JOIN
+        embeddings e
+    ON
+        cv0.vector_embedding <=> e.vector_embedding <= 0.1 -- Adjusted threshold
+    WHERE
+        cv0.run_id = 0
+),
+matching_keys AS (
+    SELECT
+        ck0.customer_id,
+        ck.customer_id AS matched_customer_id
+    FROM
+        customer_keys ck0
+    JOIN
+        customer_keys ck
+    ON
+        ck0.binary_key = ck.binary_key
+    WHERE
+        ck0.run_id = 0
+        AND ck.run_id = 23
+),
+combined_matches AS (
+    SELECT
+        COALESCE(me.customer_id, mk.customer_id) AS customer_id,
+        me.vector_embedding,
+        COALESCE(me.matched_customer_id, mk.matched_customer_id) AS matched_customer_id,
+        me.matched_vector_embedding,
+        me.similarity
+    FROM
+        matching_embeddings me
+    FULL OUTER JOIN
+        matching_keys mk
+    ON
+        me.customer_id = mk.customer_id AND me.matched_customer_id = mk.matched_customer_id
+),
+ngram_sums AS (
+    SELECT
+        vt0.customer_id,
+        SUM(vt0.ngram_tfidf) AS candidate_tfidf,
+        SUM(vt.ngram_tfidf) AS matched_tfidf
+    FROM
+        customer_tokens vt0
+    JOIN
+        customer_tokens vt
+    ON
+        vt0.ngram_token = vt.ngram_token
+        AND vt0.entity_type_id = vt.entity_type_id
+    JOIN
+        combined_matches cm
+    ON
+        vt0.customer_id = cm.customer_id
+        AND vt.customer_id = cm.matched_customer_id
+    WHERE
+        vt0.run_id = 0
+        AND vt.run_id = 23
+    GROUP BY
+        vt0.customer_id
+)
+SELECT
+    cm.customer_id,
+    cm.vector_embedding,
+    cm.matched_customer_id,
+    cm.matched_vector_embedding,
+    cm.similarity,
+    ns.candidate_tfidf,
+    ns.matched_tfidf
+FROM
+    combined_matches cm
+LEFT JOIN
+    ngram_sums ns
+ON
+    cm.customer_id = ns.customer_id
+WHERE
+    cm.customer_id = 13
+ORDER BY
+    similarity DESC NULLS LAST;
