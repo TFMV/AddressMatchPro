@@ -93,7 +93,40 @@ func ExtractFeatures(req MatchRequest, candidate Candidate, standardizedCandidat
 		features["address_match"] = 0.0
 	}
 
-	// Add more features as needed
+	// Example feature: phone number match
+	if candidate.PhoneNumber == req.PhoneNumber {
+		features["phone_number_match"] = 1.0
+	} else {
+		features["phone_number_match"] = 0.0
+	}
+
+	// Example feature: name match
+	if candidate.FirstName == req.FirstName && candidate.LastName == req.LastName {
+		features["name_match"] = 1.0
+	} else {
+		features["name_match"] = 0.0
+	}
+
+	// Example feature: city match
+	if candidate.City == req.City {
+		features["city_match"] = 1.0
+	} else {
+		features["city_match"] = 0.0
+	}
+
+	// Example feature: state match
+	if candidate.State == req.State {
+		features["state_match"] = 1.0
+	} else {
+		features["state_match"] = 0.0
+	}
+
+	// Example feature: zip code match
+	if candidate.ZipCode == req.ZipCode {
+		features["zip_code_match"] = 1.0
+	} else {
+		features["zip_code_match"] = 0.0
+	}
 
 	return features
 }
@@ -230,7 +263,7 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 	)
 	SELECT 
 		m.matched_customer_id,
-		m.similarity,
+		case when m.similarity is null then 0 else m.similarity end as similarity,
 		COALESCE(cm.first_name, '') AS first_name,
 		COALESCE(cm.last_name, '') AS last_name,
 		COALESCE(cm.phone_number, '') AS phone_number,
@@ -238,8 +271,8 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 		COALESCE(cm.city, '') AS city,
 		COALESCE(cm.state, '') AS state,
 		COALESCE(cm.zip_code, '') AS zip_code,
-		m.similarity,
-		m.matched_tfidf
+		case when m.similarity is null then 0 else m.similarity end as similarity,
+		case when m.matched_tfidf is null then 0 else m.matched_tfidf end as matched_tfidf
 	FROM matches m
 	JOIN customer_matching cm ON cm.customer_id = m.customer_id
 	WHERE cm.run_id = 0 AND EXISTS (
