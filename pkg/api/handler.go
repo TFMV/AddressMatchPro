@@ -71,7 +71,7 @@ func MatchSingleHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 		}
 
 		// Find matches
-		candidates := matcher.FindMatches(req, matcher.NewScorer(), pool)
+		candidates := matcher.FindMatches(req, pool)
 
 		c.JSON(http.StatusOK, candidates)
 	}

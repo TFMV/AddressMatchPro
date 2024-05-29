@@ -169,8 +169,31 @@ func generateCandidateIDF(pool *pgxpool.Pool, runID int) map[string]float64 {
 
 // Generate TF/IDF vectors and insert them into the database
 func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
-	idf := generateCandidateIDF(pool, runID)
-	rows, err := pool.Query(context.Background(), "SELECT customer_id, lower(first_name) || ' ' || lower(last_name) as name, lower(street) as street FROM customer_matching WHERE run_id = $1", runID)
+	// Ensure IDF values are generated and stored
+	generateCandidateIDF(pool, runID)
+
+	// Fetch IDF values from the database
+	idf := make(map[string]float64)
+	rows, err := pool.Query(context.Background(), "SELECT ngram_token, ngram_idf FROM tokens_idf WHERE run_id = $1", runID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var token string
+		var idfValue float64
+		if err := rows.Scan(&token, &idfValue); err != nil {
+			log.Fatal(err)
+		}
+		idf[token] = idfValue
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	rows, err = pool.Query(context.Background(), "SELECT customer_id, lower(first_name) || ' ' || lower(last_name) as name, lower(street) as street FROM customer_matching WHERE run_id = $1", runID)
 	if err != nil {
 		log.Fatal(err)
 	}
