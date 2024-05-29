@@ -32,6 +32,7 @@ package matcher
 import (
 	"context"
 	"log"
+	"math"
 	"sort"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -79,7 +80,8 @@ func (s *Scorer) Score(features map[string]float64) float64 {
 	for feature, weight := range s.Weights {
 		score += features[feature] * weight
 	}
-	return score
+	// Normalize score to be between 1 and 100
+	return math.Max(1, math.Min(100, score*100))
 }
 
 // ExtractFeatures extracts features from the MatchRequest and Candidate
@@ -347,8 +349,4 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 
 	log.Printf("Total candidates found: %d\n", len(candidates)) // Log the total number of candidates found
 	return candidates, nil
-}
-
-func FindMatchesBatch(runID int, scorer *Scorer, pool *pgxpool.Pool) []Candidate {
-	return nil
 }
