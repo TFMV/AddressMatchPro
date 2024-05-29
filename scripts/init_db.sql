@@ -107,6 +107,12 @@ CREATE INDEX idx_customer_keys_binary_key ON customer_keys (binary_key);
 CREATE INDEX idx_customer_tokens_ngram_token ON customer_tokens (ngram_token);
 CREATE INDEX idx_tokens_idf_ngram_token ON tokens_idf (ngram_token);
 
+CREATE INDEX IF NOT EXISTS idx_customer_vector_embedding_run_id ON customer_vector_embedding(run_id);
+CREATE INDEX IF NOT EXISTS idx_customer_keys_run_id_binary_key ON customer_keys(run_id, binary_key);
+CREATE INDEX IF NOT EXISTS idx_customer_tokens_run_id_ngram_token_entity_type_id ON customer_tokens(run_id, ngram_token, entity_type_id);
+CREATE INDEX IF NOT EXISTS idx_customer_matching_run_id ON customer_matching(run_id);
+
+
 CREATE TABLE runs (
     run_id SERIAL PRIMARY KEY,
     description TEXT NOT NULL,
