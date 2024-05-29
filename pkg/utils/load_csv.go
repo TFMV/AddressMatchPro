@@ -30,14 +30,11 @@
 package utils
 
 import (
-	"bufio"
 	"context"
 	"encoding/csv"
-	"flag"
 	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"github.com/TFMV/AddressMatchPro/internal/matcher"
 	"github.com/jackc/pgx/v5"
@@ -71,17 +68,36 @@ func (s *CsvSource) Err() error {
 	return nil
 }
 
-func main() {
-	start := time.Now()
+// LoadCSV loads the CSV file into the specified table in the database
+func LoadCSV(pool *pgxpool.Pool, csvFilePath string, runID int) error {
+	file, err := os.Open(csvFilePath)
+	if err != nil {
+		return fmt.Errorf("error opening file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	headers, err := reader.Read() // Read the header
+	if err != nil {
+		return fmt.Errorf("error reading CSV header: %w", err)
+	}
+
+	csvSource := &CsvSource{reader: reader}
+
+	conn, err := pool.Acquire(context.Background())
+	if err != nil {
+		return fmt.Errorf("unable to acquire a connection: %w", err)
+	}
+	defer conn.Release()
 
 	// Load the configuration
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		configPath = "/Users/thomasmcgeehan/FuzzyMatchFinder/FuzzyMatchFinder/config.yaml"
+		configPath = "/path/to/your/config.yaml"
 	}
 	config, err := matcher.LoadConfig(configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// Create the database connection string
@@ -95,41 +111,16 @@ func main() {
 	)
 
 	// Create the connection pool
-	pool, err := pgxpool.New(context.Background(), databaseUrl)
+	pool, err = pgxpool.New(context.Background(), databaseUrl)
 	if err != nil {
-		log.Fatalf("Unable to create connection pool: %v\n", err)
+		return fmt.Errorf("unable to create connection pool: %w", err)
 	}
 	defer pool.Close()
 
-	conn, err := pool.Acquire(context.Background())
+	tx, err := conn.Begin(context.Background())
 	if err != nil {
-		log.Fatalf("Unable to acquire a connection: %v\n", err)
+		return fmt.Errorf("error beginning transaction: %w", err)
 	}
-	defer conn.Release()
-
-	// Get the CSV file path from command-line arguments
-	csvFilePath := flag.String("csv", "", "Path to the CSV file")
-	flag.Parse()
-
-	if *csvFilePath == "" {
-		log.Fatalf("CSV file path is required")
-	}
-
-	// Open the CSV file
-	file, err := os.Open(*csvFilePath)
-	if err != nil {
-		log.Fatalf("Error opening file: %v", err)
-		os.Exit(1)
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(bufio.NewReader(file))
-	headers, err := reader.Read() // Read the header
-	if err != nil {
-		log.Fatalf("Error reading CSV header: %v", err)
-	}
-
-	csvSource := &CsvSource{reader: reader}
 
 	copyCount, err := conn.Conn().CopyFrom(
 		context.Background(),
@@ -137,11 +128,15 @@ func main() {
 		headers,
 		csvSource,
 	)
-
 	if err != nil {
-		log.Fatalf("Error copying data to database: %v", err)
-		os.Exit(1)
+		tx.Rollback(context.Background())
+		return fmt.Errorf("error copying data to database: %w", err)
 	}
 
-	fmt.Printf("Copied %v rows to %s table in %v\n", copyCount, config.DBCreds.LoadTable, time.Since(start))
+	if err := tx.Commit(context.Background()); err != nil {
+		return fmt.Errorf("error committing transaction: %w", err)
+	}
+
+	log.Printf("Copied %v rows to %s table", copyCount, config.DBCreds.LoadTable)
+	return nil
 }

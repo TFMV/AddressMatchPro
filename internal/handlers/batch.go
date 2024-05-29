@@ -30,15 +30,17 @@
 package handlers
 
 import (
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/TFMV/AddressMatchPro/internal/matcher"
+	"github.com/TFMV/AddressMatchPro/pkg/utils"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// MatchBatchHandler handles batch record matching
 func MatchBatchHandler(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		file, _, err := r.FormFile("file")
@@ -51,27 +53,21 @@ func MatchBatchHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		// Insert the records into the database with a unique run_id
 		runID := matcher.CreateNewRun(pool, "Batch Record Matching")
 
-		records, err := csv.NewReader(file).ReadAll()
+		tempFile, err := os.CreateTemp("", "batch-upload-*.csv")
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Failed to create temp file: %v", err), http.StatusInternalServerError)
+			return
+		}
+		defer os.Remove(tempFile.Name())
+
+		if _, err := tempFile.ReadFrom(file); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to read file: %v", err), http.StatusInternalServerError)
 			return
 		}
 
-		// Process each record
-		for _, record := range records {
-			req := matcher.MatchRequest{
-				FirstName:   record[0],
-				LastName:    record[1],
-				PhoneNumber: record[2],
-				Street:      record[3],
-				City:        record[4],
-				State:       record[5],
-				ZipCode:     record[6],
-				TopN:        10,
-				RunID:       runID,
-			}
-
-			matcher.ProcessSingleRecord(pool, req)
+		if err := utils.LoadCSV(pool, tempFile.Name(), runID); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to load CSV: %v", err), http.StatusInternalServerError)
+			return
 		}
 
 		// Generate TF/IDF vectors for the batch
@@ -84,10 +80,26 @@ func MatchBatchHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		// Find matches for each record
-		candidates := matcher.FindMatchesBatch(runID, matcher.NewScorer(), pool)
+		// Fetch all unique customer IDs for the given run ID
+		customerIDs, err := matcher.GetCustomerIDs(pool, runID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to get customer IDs: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		var allCandidates []matcher.Candidate
+		for _, customerID := range customerIDs {
+			req := matcher.MatchRequest{
+				RunID: runID,
+				ID:    customerID,
+				TopN:  10,
+			}
+
+			candidates := matcher.FindMatches(req, pool)
+			allCandidates = append(allCandidates, candidates...)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(candidates)
+		json.NewEncoder(w).Encode(allCandidates)
 	}
 }
