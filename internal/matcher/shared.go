@@ -211,17 +211,6 @@ func join(slice []float64, sep string) string {
 	return str
 }
 
-// NewScorer returns a new instance of Scorer
-func NewScorer() *Scorer {
-	return &Scorer{
-		Weights: map[string]float64{
-			"first_name_match": 0.3,
-			"last_name_match":  0.3,
-			"address_match":    0.4,
-		},
-	}
-}
-
 func CreateNewRun(pool *pgxpool.Pool, description string) int {
 	var runID int
 	err := pool.QueryRow(context.Background(),

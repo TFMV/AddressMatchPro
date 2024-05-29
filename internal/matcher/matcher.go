@@ -69,78 +69,8 @@ type Candidate struct {
 	Score             float64 `json:"score"`
 }
 
-// Scorer represents a scoring mechanism for candidates
-type Scorer struct {
-	Weights map[string]float64
-}
-
-// Score calculates a score based on the provided features and weights
-func (s *Scorer) Score(features map[string]float64) float64 {
-	score := 0.0
-	for feature, weight := range s.Weights {
-		score += features[feature] * weight
-	}
-	// Normalize score to be between 1 and 100
-	return math.Max(1, math.Min(100, score*100))
-}
-
-// ExtractFeatures extracts features from the MatchRequest and Candidate
-func ExtractFeatures(req MatchRequest, candidate Candidate, standardizedCandidateAddress string) map[string]float64 {
-	features := make(map[string]float64)
-
-	// Example feature: standardized address match
-	if standardizedCandidateAddress == req.Street {
-		features["address_match"] = 1.0
-	} else {
-		features["address_match"] = 0.0
-	}
-
-	// Example feature: phone number match
-	if candidate.PhoneNumber == req.PhoneNumber {
-		features["phone_number_match"] = 1.0
-	} else {
-		features["phone_number_match"] = 0.0
-	}
-
-	// Example feature: name match
-	if candidate.FirstName == req.FirstName && candidate.LastName == req.LastName {
-		features["name_match"] = 1.0
-	} else {
-		features["name_match"] = 0.0
-	}
-
-	// Example feature: city match
-	if candidate.City == req.City {
-		features["city_match"] = 1.0
-	} else {
-		features["city_match"] = 0.0
-	}
-
-	// Example feature: state match
-	if candidate.State == req.State {
-		features["state_match"] = 1.0
-	} else {
-		features["state_match"] = 0.0
-	}
-
-	// Example feature: zip code match
-	if candidate.ZipCode == req.ZipCode {
-		features["zip_code_match"] = 1.0
-	} else {
-		features["zip_code_match"] = 0.0
-	}
-
-	// Feature: similarity
-	features["similarity"] = candidate.Similarity
-
-	// Feature: TFIDF score
-	features["tfidf_score"] = candidate.MatchedTFIDF
-
-	return features
-}
-
 // FindMatches finds the best matches for a given MatchRequest
-func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candidate {
+func FindMatches(req MatchRequest, pool *pgxpool.Pool) []Candidate {
 	log.Printf("Starting FindMatches for request: %+v\n", req)
 
 	// Find potential matches based on binary key or vector similarity
@@ -154,17 +84,11 @@ func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candida
 
 	// Rank candidates based on composite score
 	for i, candidate := range candidates {
-		standardizedCandidateAddress, err := StandardizeAddress(candidate.Street)
-		if err != nil {
-			log.Printf("Failed to standardize candidate address for candidate %d: %v\n", candidate.MatchedCustomerID, err)
-			continue
-		}
+		// Compute the score as 80% vector similarity and 20% n-gram TFIDF score
+		score := 0.8*candidate.Similarity + 0.2*candidate.MatchedTFIDF
+		candidates[i].Score = math.Max(1, math.Min(100, score*100))
 
-		features := ExtractFeatures(req, candidate, standardizedCandidateAddress)
-		score := scorer.Score(features)
-		candidates[i].Score = score
-
-		log.Printf("Candidate %d scored: %f\n", candidate.MatchedCustomerID, score)
+		log.Printf("Candidate %d scored: %f\n", candidate.MatchedCustomerID, candidates[i].Score)
 	}
 
 	// Sort candidates by score in descending order
@@ -271,7 +195,7 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 	)
 	SELECT 
 		cm.customer_id as matched_customer_id,
-		case when m.similarity is null then 0 else m.similarity end as similarity,
+		COALESCE(m.similarity, 0) as similarity,
 		COALESCE(cm.first_name, '') AS first_name,
 		COALESCE(cm.last_name, '') AS last_name,
 		COALESCE(cm.phone_number, '') AS phone_number,
@@ -279,8 +203,8 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 		COALESCE(cm.city, '') AS city,
 		COALESCE(cm.state, '') AS state,
 		COALESCE(cm.zip_code, '') AS zip_code,
-		case when m.similarity is null then 0 else m.similarity end as similarity,
-		case when m.matched_tfidf is null then 0 else m.matched_tfidf end as matched_tfidf
+		COALESCE(m.similarity, 0) as similarity,
+		COALESCE(m.matched_tfidf, 0) as matched_tfidf
 	FROM matches m
 	JOIN customer_matching cm ON cm.customer_id = m.customer_id
 	WHERE cm.run_id = 0 AND EXISTS (
