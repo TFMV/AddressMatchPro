@@ -30,8 +30,9 @@
 package handlers
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/TFMV/AddressMatchPro/internal/matcher"
@@ -39,97 +40,61 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ProcessBatch processes a batch CSV file and finds matches
-func ProcessBatch(pool *pgxpool.Pool, filePath string, scriptPath string) ([]matcher.Candidate, error) {
-	// Insert the records into the database with a unique run_id
-	runID := matcher.CreateNewRun(pool, "Batch Record Matching")
+// MatchBatchHandler handles batch record matching
+func MatchBatchHandler(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
 
-	if err := utils.LoadCSV(pool, filePath); err != nil {
-		return nil, fmt.Errorf("failed to load CSV: %v", err)
-	}
+		// Insert the records into the database with a unique run_id
+		runID := matcher.CreateNewRun(pool, "Batch Record Matching")
 
-	// Insert records from load_table into customer_matching with the given run_id
-	err := matcher.InsertFromLoadTable(pool, runID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to insert records into customer_matching: %v", err)
-	}
+		tempFile, err := os.CreateTemp("", "batch-upload-*.csv")
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to create temp file: %v", err), http.StatusInternalServerError)
+			return
+		}
+		defer os.Remove(tempFile.Name())
 
-	// Generate TF/IDF vectors for the batch
-	matcher.GenerateTFIDF(pool, runID)
-
-	// Insert vector embeddings using Python script
-	if err := matcher.GenerateEmbeddingsPythonScript(scriptPath, runID); err != nil {
-		return nil, fmt.Errorf("failed to generate embeddings: %v", err)
-	}
-
-	// Fetch all unique customer IDs for the given run ID
-	customerIDs, err := matcher.GetCustomerIDs(pool, runID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get customer IDs: %v", err)
-	}
-
-	var allCandidates []matcher.Candidate
-	for _, customerID := range customerIDs {
-		req := matcher.MatchRequest{
-			RunID: runID,
-			ID:    customerID,
-			TopN:  10,
+		if _, err := tempFile.ReadFrom(file); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to read file: %v", err), http.StatusInternalServerError)
+			return
 		}
 
-		candidates := matcher.FindMatches(req, pool)
-		allCandidates = append(allCandidates, candidates...)
-	}
+		if err := utils.LoadCSV(pool, tempFile.Name()); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to load CSV: %v", err), http.StatusInternalServerError)
+			return
+		}
 
-	return allCandidates, nil
-}
+		// Insert records from load_table into customer_matching with the given run_id
+		err = matcher.InsertFromLoadTable(pool, runID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to insert records into customer_matching: %v", err), http.StatusInternalServerError)
+			return
+		}
 
-// Main function to run batch processing standalone
-func main() {
-	if len(os.Args) < 3 {
-		fmt.Println("Usage: batch <csv_file_path> <python_script_path>")
-		return
-	}
+		// Generate TF/IDF vectors for the batch
+		matcher.GenerateTFIDF(pool, runID)
 
-	csvFilePath := os.Args[1]
-	pythonScriptPath := os.Args[2]
+		// Insert vector embeddings using Python script
+		scriptPath := "./python-ml/generate_embeddings.py"
+		if err := matcher.GenerateEmbeddingsPythonScript(scriptPath, runID); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to generate embeddings: %v", err), http.StatusInternalServerError)
+			return
+		}
 
-	// Load the configuration
-	configPath := os.Getenv("CONFIG_PATH")
-	if configPath == "" {
-		configPath = "/Users/thomasmcgeehan/AddressMatchPro/AddressMatchPro/config.yaml"
-	}
-	config, err := matcher.LoadConfig(configPath)
-	if err != nil {
-		fmt.Printf("Failed to load config: %v\n", err)
-		return
-	}
+		// Run the match query for the entire space of records within the run_id
+		candidates, err := matcher.FindMatchesForRunID(pool, runID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to find matches: %v", err), http.StatusInternalServerError)
+			return
+		}
 
-	// Create the database connection string
-	databaseUrl := fmt.Sprintf(
-		"postgresql://%s:%s@%s:%s/%s",
-		config.DBCreds.Username,
-		config.DBCreds.Password,
-		config.DBCreds.Host,
-		config.DBCreds.Port,
-		config.DBCreds.Database,
-	)
-
-	// Create the connection pool
-	pool, err := pgxpool.New(context.Background(), databaseUrl)
-	if err != nil {
-		fmt.Printf("Unable to create connection pool: %v\n", err)
-		return
-	}
-	defer pool.Close()
-
-	candidates, err := ProcessBatch(pool, csvFilePath, pythonScriptPath)
-	if err != nil {
-		fmt.Printf("Error processing batch: %v\n", err)
-		return
-	}
-
-	// Output the results
-	for _, candidate := range candidates {
-		fmt.Printf("Matched Customer ID: %d, Score: %.2f\n", candidate.MatchedCustomerID, candidate.Score)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(candidates)
 	}
 }
