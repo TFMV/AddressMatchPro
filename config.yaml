@@ -4,4 +4,4 @@ db_creds:
   username: 'postgres'
   password: 'your_password'
   database: 'tfmv'
-  load_table: 'orders'
+  load_table: 'batch_match'

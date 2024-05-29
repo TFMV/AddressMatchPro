@@ -69,7 +69,7 @@ func (s *CsvSource) Err() error {
 }
 
 // LoadCSV loads the CSV file into the specified table in the database
-func LoadCSV(pool *pgxpool.Pool, csvFilePath string, runID int) error {
+func LoadCSV(pool *pgxpool.Pool, csvFilePath string) error {
 	file, err := os.Open(csvFilePath)
 	if err != nil {
 		return fmt.Errorf("error opening file: %w", err)
@@ -93,29 +93,12 @@ func LoadCSV(pool *pgxpool.Pool, csvFilePath string, runID int) error {
 	// Load the configuration
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		configPath = "/path/to/your/config.yaml"
+		configPath = "/Users/thomasmcgeehan/AddressMatchPro/AddressMatchPro/config.yaml"
 	}
 	config, err := matcher.LoadConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
-
-	// Create the database connection string
-	databaseUrl := fmt.Sprintf(
-		"postgresql://%s:%s@%s:%s/%s",
-		config.DBCreds.Username,
-		config.DBCreds.Password,
-		config.DBCreds.Host,
-		config.DBCreds.Port,
-		config.DBCreds.Database,
-	)
-
-	// Create the connection pool
-	pool, err = pgxpool.New(context.Background(), databaseUrl)
-	if err != nil {
-		return fmt.Errorf("unable to create connection pool: %w", err)
-	}
-	defer pool.Close()
 
 	tx, err := conn.Begin(context.Background())
 	if err != nil {
