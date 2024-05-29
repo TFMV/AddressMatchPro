@@ -34,6 +34,7 @@ import (
 	"log"
 	"sort"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -56,6 +57,15 @@ type MatchRequest struct {
 type Candidate struct {
 	MatchedCustomerID int     `json:"matched_customer_id"`
 	Similarity        float64 `json:"similarity"`
+	FirstName         string  `json:"first_name"`
+	LastName          string  `json:"last_name"`
+	PhoneNumber       string  `json:"phone_number"`
+	Street            string  `json:"street"`
+	City              string  `json:"city"`
+	State             string  `json:"state"`
+	ZipCode           string  `json:"zip_code"`
+	MatchedTFIDF      float64 `json:"matched_tfidf"`
+	Score             float64 `json:"score"`
 }
 
 // Scorer represents a scoring mechanism for candidates
@@ -101,53 +111,24 @@ func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candida
 
 	log.Printf("Found %d potential matches\n", len(candidates))
 
-	// Fetch details for candidates and score them
+	// Rank candidates based on composite score
 	for i, candidate := range candidates {
-		var details struct {
-			FirstName   string
-			LastName    string
-			PhoneNumber string
-			Street      string
-			City        string
-			State       string
-			ZipCode     string
-		}
-
-		err := pool.QueryRow(context.Background(), `
-			SELECT first_name, last_name, phone_number, street, city, state, zip_code
-			FROM customer_matching
-			WHERE customer_id = $1 AND run_id = 0
-		`, candidate.MatchedCustomerID).Scan(
-			&details.FirstName,
-			&details.LastName,
-			&details.PhoneNumber,
-			&details.Street,
-			&details.City,
-			&details.State,
-			&details.ZipCode,
-		)
+		standardizedCandidateAddress, err := StandardizeAddress(candidate.Street)
 		if err != nil {
-			log.Printf("Error fetching candidate details: %v\n", err)
+			log.Printf("Failed to standardize candidate address for candidate %d: %v\n", candidate.MatchedCustomerID, err)
 			continue
 		}
 
-		// Score the candidate
-		standardizedCandidateAddress, err := StandardizeAddress(details.Street)
-		if err != nil {
-			log.Printf("Failed to standardize candidate address: %v\n", err)
-			continue
-		}
-
-		features := ExtractFeatures(req, candidates[i], standardizedCandidateAddress)
+		features := ExtractFeatures(req, candidate, standardizedCandidateAddress)
 		score := scorer.Score(features)
-		candidates[i].Similarity = score
+		candidates[i].Score = score
 
 		log.Printf("Candidate %d scored: %f\n", candidate.MatchedCustomerID, score)
 	}
 
 	// Sort candidates by score in descending order
 	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].Similarity > candidates[j].Similarity
+		return candidates[i].Score > candidates[j].Score
 	})
 
 	// If the number of candidates exceeds the requested TopN, truncate the list
@@ -235,25 +216,44 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 		GROUP BY
 			vt0.customer_id
 	),
-		 matches as (SELECT cm.customer_id,
-							cm.vector_embedding,
-							cm.matched_customer_id,
-							cm.matched_vector_embedding,
-							cm.similarity,
-							ns.candidate_tfidf,
-							ns.matched_tfidf
-					 FROM combined_matches cm
-							  LEFT JOIN
-						  ngram_sums ns
-						  ON
-							  cm.customer_id = ns.customer_id)
-	select m.customer_id as matched_customer_id,
-		   m.similarity as similarity
-	from matches m
-	join customer_matching cm
-	on cm.customer_id = m.customer_id
-	ORDER BY
-		m.similarity ASC NULLS LAST;
+	matches AS (
+		SELECT 
+			cm.customer_id,
+			cm.vector_embedding,
+			cm.matched_customer_id,
+			cm.matched_vector_embedding,
+			cm.similarity,
+			ns.candidate_tfidf,
+			ns.matched_tfidf
+		FROM combined_matches cm
+		LEFT JOIN ngram_sums ns ON cm.customer_id = ns.customer_id
+	)
+	SELECT 
+		m.matched_customer_id,
+		m.similarity,
+		COALESCE(cm.first_name, '') AS first_name,
+		COALESCE(cm.last_name, '') AS last_name,
+		COALESCE(cm.phone_number, '') AS phone_number,
+		COALESCE(cm.street, '') AS street,
+		COALESCE(cm.city, '') AS city,
+		COALESCE(cm.state, '') AS state,
+		COALESCE(cm.zip_code, '') AS zip_code,
+		m.similarity,
+		m.matched_tfidf
+	FROM matches m
+	JOIN customer_matching cm ON cm.customer_id = m.customer_id
+	WHERE cm.run_id = 0 AND EXISTS (
+		SELECT 1
+		FROM customer_matching cm2
+		WHERE cm2.run_id = 0 AND
+			  cm2.state = cm.state AND
+			  (cm2.zip_code = cm.zip_code OR
+			   cm2.city = cm.city OR
+			   cm2.phone_number = cm.phone_number) AND
+			  cm2.customer_id = cm.customer_id
+	)
+	ORDER BY m.similarity ASC, m.matched_tfidf DESC NULLS LAST
+	LIMIT 10;
 	`
 
 	// Log the query and the runID parameter
@@ -271,12 +271,33 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 	// Iterate through the rows and populate the candidates slice
 	for rows.Next() {
 		var candidate Candidate
+		var firstName, lastName, phoneNumber, street, city, state, zipCode pgtype.Text
+
 		if err := rows.Scan(
 			&candidate.MatchedCustomerID,
 			&candidate.Similarity,
+			&firstName,
+			&lastName,
+			&phoneNumber,
+			&street,
+			&city,
+			&state,
+			&zipCode,
+			&candidate.Similarity,
+			&candidate.MatchedTFIDF,
 		); err != nil {
 			return nil, err
 		}
+
+		// Convert pgtype.Text to string
+		candidate.FirstName = firstName.String
+		candidate.LastName = lastName.String
+		candidate.PhoneNumber = phoneNumber.String
+		candidate.Street = street.String
+		candidate.City = city.String
+		candidate.State = state.String
+		candidate.ZipCode = zipCode.String
+
 		log.Printf("Retrieved candidate: %+v\n", candidate) // Log each retrieved candidate
 		candidates = append(candidates, candidate)
 	}
