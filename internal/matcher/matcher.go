@@ -128,6 +128,12 @@ func ExtractFeatures(req MatchRequest, candidate Candidate, standardizedCandidat
 		features["zip_code_match"] = 0.0
 	}
 
+	// Feature: similarity
+	features["similarity"] = candidate.Similarity
+
+	// Feature: TFIDF score
+	features["tfidf_score"] = candidate.MatchedTFIDF
+
 	return features
 }
 
@@ -262,7 +268,7 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 		LEFT JOIN ngram_sums ns ON cm.customer_id = ns.customer_id
 	)
 	SELECT 
-		m.matched_customer_id,
+		cm.customer_id as matched_customer_id,
 		case when m.similarity is null then 0 else m.similarity end as similarity,
 		COALESCE(cm.first_name, '') AS first_name,
 		COALESCE(cm.last_name, '') AS last_name,
@@ -279,7 +285,7 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 		SELECT 1
 		FROM customer_matching cm2
 		WHERE cm2.run_id = 0 AND
-			  cm2.state = cm.state AND
+			  (cm2.state = cm.state OR cm2.zip_code = cm.zip_code) AND
 			  (cm2.zip_code = cm.zip_code OR
 			   cm2.city = cm.city OR
 			   cm2.phone_number = cm.phone_number) AND
@@ -331,7 +337,6 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 		candidate.State = state.String
 		candidate.ZipCode = zipCode.String
 
-		log.Printf("Retrieved candidate: %+v\n", candidate) // Log each retrieved candidate
 		candidates = append(candidates, candidate)
 	}
 
