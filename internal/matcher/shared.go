@@ -277,3 +277,33 @@ func GenerateEmbeddingsPythonScript(scriptPath string, runID int) error {
 	}
 	return nil
 }
+
+// GetCustomerIDs fetches all unique customer IDs for the given run ID
+func GetCustomerIDs(pool *pgxpool.Pool, runID int) ([]int, error) {
+	query := `SELECT DISTINCT customer_id FROM customer_matching WHERE run_id = $1`
+	rows, err := pool.Query(context.Background(), query, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var customerIDs []int
+	for rows.Next() {
+		var customerID int
+		if err := rows.Scan(&customerID); err != nil {
+			return nil, err
+		}
+		customerIDs = append(customerIDs, customerID)
+	}
+
+	return customerIDs, nil
+}
+
+// InsertFromLoadTable inserts records from the load_table into customer_matching
+func InsertFromLoadTable(pool *pgxpool.Pool, runID int) error {
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO customer_matching (customer_id, first_name, last_name, phone_number, street, city, state, zip_code, run_id)
+		 SELECT customer_id, LOWER(first_name), LOWER(last_name), phone_number, street, LOWER(city), LOWER(state), LOWER(zip_code::TEXT), $1 AS run_id
+		 FROM batch_match`, runID)
+	return err
+}

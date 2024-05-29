@@ -43,7 +43,7 @@ DROP TABLE IF EXISTS customer_keys;
 DROP TABLE IF EXISTS customer_matching;
 
 CREATE TABLE customer_matching (
-    customer_id SERIAL PRIMARY KEY,
+    customer_id SERIAL,
     first_name TEXT,
     last_name TEXT,
     phone_number TEXT,
@@ -51,7 +51,22 @@ CREATE TABLE customer_matching (
     city TEXT,
     state TEXT,
     zip_code TEXT,
-    run_id INT
+    run_id INT,
+    PRIMARY KEY (customer_id, run_id)
+);
+
+CREATE INDEX idx_customer_id ON customer_matching (customer_id);
+
+
+CREATE TABLE batch_match (
+    customer_id INT PRIMARY KEY,
+    first_name TEXT,
+    last_name TEXT,
+    phone_number TEXT,
+    street TEXT,
+    city TEXT,
+    state TEXT,
+    zip_code TEXT
 );
 
 CREATE INDEX idx_run_id ON customer_matching(run_id);

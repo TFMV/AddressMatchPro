@@ -14,7 +14,7 @@
 // copies or substantial portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// IMPLIED, INCLUDING WITHOUT LIMITATION THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
@@ -30,10 +30,10 @@
 package api
 
 import (
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/TFMV/AddressMatchPro/internal/matcher"
@@ -82,13 +82,13 @@ func MatchBatchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		file, err := c.FormFile("file")
 		if err != nil {
-			utils.SendError(c.Writer, http.StatusBadRequest, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
 		f, err := file.Open()
 		if err != nil {
-			utils.SendError(c.Writer, http.StatusInternalServerError, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 		defer f.Close()
@@ -96,37 +96,64 @@ func MatchBatchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 		// Insert the records into the database with a unique run_id
 		runID := matcher.CreateNewRun(pool, "Batch Record Matching")
 
-		records, err := csv.NewReader(f).ReadAll()
+		tempFile, err := os.CreateTemp("", "batch-upload-*.csv")
 		if err != nil {
-			utils.SendError(c.Writer, http.StatusInternalServerError, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create temp file: %v", err)})
+			return
+		}
+		defer os.Remove(tempFile.Name())
+
+		if _, err := tempFile.ReadFrom(f); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to read file: %v", err)})
 			return
 		}
 
-		for _, record := range records {
+		if err := utils.LoadCSV(pool, tempFile.Name()); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to load CSV: %v", err)})
+			return
+		}
+
+		// Insert records from load_table into customer_matching with the given run_id
+		err = matcher.InsertFromLoadTable(pool, runID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to insert records into customer_matching: %v", err)})
+			return
+		}
+
+		// Generate TF/IDF vectors for the batch
+		matcher.GenerateTFIDF(pool, runID)
+
+		// Insert vector embeddings using Python script
+		scriptPath := "/Users/thomasmcgeehan/AddressMatchPro/AddressMatchPro/python-ml/generate_embeddings.py"
+		if err := matcher.GenerateEmbeddingsPythonScript(scriptPath, runID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to generate embeddings: %v", err)})
+			return
+		}
+
+		// Fetch all unique customer IDs for the given run ID
+		customerIDs, err := matcher.GetCustomerIDs(pool, runID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get customer IDs: %v", err)})
+			return
+		}
+
+		var allCandidates []matcher.Candidate
+		for _, customerID := range customerIDs {
 			req := matcher.MatchRequest{
-				FirstName:   record[0],
-				LastName:    record[1],
-				PhoneNumber: record[2],
-				Street:      record[3],
-				City:        record[4],
-				State:       record[5],
-				ZipCode:     record[6],
-				TopN:        10,
-				RunID:       runID,
+				RunID: runID,
+				ID:    customerID,
+				TopN:  10,
 			}
 
-			// Process the record and generate keys/vectors
-			matcher.ProcessSingleRecord(pool, req)
+			candidates := matcher.FindMatches(req, pool)
+			allCandidates = append(allCandidates, candidates...)
 		}
 
-		// Find matches for each record
-		candidates, err := matcher.FindPotentialMatches(pool, runID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to find potential matches: %v", err)})
-			return
-		}
-
-		utils.SendJSON(c.Writer, http.StatusOK, "Batch matches found successfully", candidates)
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "success",
+			"message": "Batch matches found successfully",
+			"data":    allCandidates,
+		})
 	}
 }
 

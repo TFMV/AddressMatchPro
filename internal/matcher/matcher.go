@@ -274,24 +274,3 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 	log.Printf("Total candidates found: %d\n", len(candidates)) // Log the total number of candidates found
 	return candidates, nil
 }
-
-// GetCustomerIDs fetches all unique customer IDs for the given run ID
-func GetCustomerIDs(pool *pgxpool.Pool, runID int) ([]int, error) {
-	query := `SELECT DISTINCT customer_id FROM customer_matching WHERE run_id = $1`
-	rows, err := pool.Query(context.Background(), query, runID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var customerIDs []int
-	for rows.Next() {
-		var customerID int
-		if err := rows.Scan(&customerID); err != nil {
-			return nil, err
-		}
-		customerIDs = append(customerIDs, customerID)
-	}
-
-	return customerIDs, nil
-}
