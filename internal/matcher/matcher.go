@@ -33,7 +33,6 @@ import (
 	"context"
 	"log"
 	"sort"
-	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -55,19 +54,8 @@ type MatchRequest struct {
 
 // Candidate represents a potential match
 type Candidate struct {
-	ID          int     `json:"id"`
-	FullName    string  `json:"full_name"`
-	Score       float64 `json:"score"`
-	CustomerID  int
-	Name        string
-	Street      string
-	Similarity  float64
-	FirstName   string `json:"first_name"`
-	LastName    string `json:"last_name"`
-	PhoneNumber string `json:"phone_number"`
-	City        string `json:"city"`
-	State       string `json:"state"`
-	ZipCode     string `json:"zip_code"`
+	MatchedCustomerID int     `json:"matched_customer_id"`
+	Similarity        float64 `json:"similarity"`
 }
 
 // Scorer represents a scoring mechanism for candidates
@@ -88,20 +76,6 @@ func (s *Scorer) Score(features map[string]float64) float64 {
 func ExtractFeatures(req MatchRequest, candidate Candidate, standardizedCandidateAddress string) map[string]float64 {
 	features := make(map[string]float64)
 
-	// Example feature: matching first name
-	if strings.EqualFold(req.FirstName, candidate.FirstName) {
-		features["first_name_match"] = 1.0
-	} else {
-		features["first_name_match"] = 0.0
-	}
-
-	// Example feature: matching last name
-	if strings.EqualFold(req.LastName, candidate.LastName) {
-		features["last_name_match"] = 1.0
-	} else {
-		features["last_name_match"] = 0.0
-	}
-
 	// Example feature: standardized address match
 	if standardizedCandidateAddress == req.Street {
 		features["address_match"] = 1.0
@@ -116,6 +90,7 @@ func ExtractFeatures(req MatchRequest, candidate Candidate, standardizedCandidat
 
 // FindMatches finds the best matches for a given MatchRequest
 func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candidate {
+	log.Printf("Starting FindMatches for request: %+v\n", req)
 
 	// Find potential matches based on binary key or vector similarity
 	candidates, err := FindPotentialMatches(pool, req.RunID)
@@ -124,43 +99,165 @@ func FindMatches(req MatchRequest, scorer *Scorer, pool *pgxpool.Pool) []Candida
 		return nil
 	}
 
-	// Rank candidates based on composite score
+	log.Printf("Found %d potential matches\n", len(candidates))
+
+	// Fetch details for candidates and score them
 	for i, candidate := range candidates {
-		standardizedCandidateAddress, err := StandardizeAddress(candidate.Street)
+		var details struct {
+			FirstName   string
+			LastName    string
+			PhoneNumber string
+			Street      string
+			City        string
+			State       string
+			ZipCode     string
+		}
+
+		err := pool.QueryRow(context.Background(), `
+			SELECT first_name, last_name, phone_number, street, city, state, zip_code
+			FROM customer_matching
+			WHERE customer_id = $1 AND run_id = 0
+		`, candidate.MatchedCustomerID).Scan(
+			&details.FirstName,
+			&details.LastName,
+			&details.PhoneNumber,
+			&details.Street,
+			&details.City,
+			&details.State,
+			&details.ZipCode,
+		)
+		if err != nil {
+			log.Printf("Error fetching candidate details: %v\n", err)
+			continue
+		}
+
+		// Score the candidate
+		standardizedCandidateAddress, err := StandardizeAddress(details.Street)
 		if err != nil {
 			log.Printf("Failed to standardize candidate address: %v\n", err)
 			continue
 		}
 
-		features := ExtractFeatures(req, candidate, standardizedCandidateAddress)
+		features := ExtractFeatures(req, candidates[i], standardizedCandidateAddress)
 		score := scorer.Score(features)
-		candidates[i].Score = score
+		candidates[i].Similarity = score
+
+		log.Printf("Candidate %d scored: %f\n", candidate.MatchedCustomerID, score)
 	}
 
 	// Sort candidates by score in descending order
 	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].Score > candidates[j].Score
+		return candidates[i].Similarity > candidates[j].Similarity
 	})
 
+	// If the number of candidates exceeds the requested TopN, truncate the list
 	if len(candidates) > req.TopN {
 		candidates = candidates[:req.TopN]
 	}
 
+	log.Printf("Returning %d candidates\n", len(candidates))
 	return candidates
 }
 
 // FindPotentialMatches finds potential matches based on binary key or vector similarity
 func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
-
 	// SQL query to find potential matches
 	query := `
-		SELECT c.*
-		FROM customer_vector_embedding cv
-		JOIN customer_matching c ON cv.customer_id = c.customer_id
-		WHERE (c.binary_key = $1 OR cv.vector_embedding <=> $2 < 0.8) AND c.run_id = $3
-		ORDER BY similarity ASC
-		LIMIT 10;
+	WITH embeddings AS (
+		SELECT customer_id, vector_embedding
+		FROM customer_vector_embedding
+		WHERE run_id = $1
+	),
+	matching_embeddings AS (
+		SELECT
+			cv0.customer_id,
+			cv0.vector_embedding,
+			e.customer_id AS matched_customer_id,
+			e.vector_embedding AS matched_vector_embedding,
+			cv0.vector_embedding <=> e.vector_embedding AS similarity
+		FROM
+			customer_vector_embedding cv0
+		JOIN
+			embeddings e
+		ON
+			cv0.vector_embedding <=> e.vector_embedding <= 0.2 -- Adjusted threshold
+		WHERE
+			cv0.run_id = 0
+	),
+	matching_keys AS (
+		SELECT
+			ck0.customer_id,
+			ck.customer_id AS matched_customer_id
+		FROM
+			customer_keys ck0
+		JOIN
+			customer_keys ck
+		ON
+			ck0.binary_key = ck.binary_key
+		WHERE
+			ck0.run_id = 0
+			AND ck.run_id = $1
+	),
+	combined_matches AS (
+		SELECT
+			COALESCE(me.customer_id, mk.customer_id) AS customer_id,
+			me.vector_embedding,
+			COALESCE(me.matched_customer_id, mk.matched_customer_id) AS matched_customer_id,
+			me.matched_vector_embedding,
+			me.similarity
+		FROM
+			matching_embeddings me
+		FULL OUTER JOIN
+			matching_keys mk
+		ON
+			me.customer_id = mk.customer_id AND me.matched_customer_id = mk.matched_customer_id
+	),
+	ngram_sums AS (
+		SELECT
+			vt0.customer_id,
+			SUM(vt0.ngram_tfidf) AS candidate_tfidf,
+			SUM(vt.ngram_tfidf) AS matched_tfidf
+		FROM
+			customer_tokens vt0
+		JOIN
+			customer_tokens vt
+		ON
+			vt0.ngram_token = vt.ngram_token
+			AND vt0.entity_type_id = vt.entity_type_id
+		JOIN
+			combined_matches cm
+		ON
+			vt0.customer_id = cm.customer_id
+			AND vt.customer_id = cm.matched_customer_id
+		WHERE
+			vt0.run_id = 0
+			AND vt.run_id = $1
+		GROUP BY
+			vt0.customer_id
+	),
+		 matches as (SELECT cm.customer_id,
+							cm.vector_embedding,
+							cm.matched_customer_id,
+							cm.matched_vector_embedding,
+							cm.similarity,
+							ns.candidate_tfidf,
+							ns.matched_tfidf
+					 FROM combined_matches cm
+							  LEFT JOIN
+						  ngram_sums ns
+						  ON
+							  cm.customer_id = ns.customer_id)
+	select m.customer_id as matched_customer_id,
+		   m.similarity as similarity
+	from matches m
+	join customer_matching cm
+	on cm.customer_id = m.customer_id
+	ORDER BY
+		m.similarity ASC NULLS LAST;
 	`
+
+	// Log the query and the runID parameter
+	log.Printf("Executing query with runID: %d\nQuery: %s\n", runID, query)
 
 	// Execute the query
 	rows, err := pool.Query(context.Background(), query, runID)
@@ -174,9 +271,13 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 	// Iterate through the rows and populate the candidates slice
 	for rows.Next() {
 		var candidate Candidate
-		if err := rows.Scan(&candidate.CustomerID, &candidate.Name, &candidate.Street, &candidate.Similarity); err != nil {
+		if err := rows.Scan(
+			&candidate.MatchedCustomerID,
+			&candidate.Similarity,
+		); err != nil {
 			return nil, err
 		}
+		log.Printf("Retrieved candidate: %+v\n", candidate) // Log each retrieved candidate
 		candidates = append(candidates, candidate)
 	}
 
@@ -185,73 +286,10 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 		return nil, err
 	}
 
+	log.Printf("Total candidates found: %d\n", len(candidates)) // Log the total number of candidates found
 	return candidates, nil
 }
 
-// FindMatchesBatch finds matches for a batch of records by run ID
 func FindMatchesBatch(runID int, scorer *Scorer, pool *pgxpool.Pool) []Candidate {
-	query := "SELECT customer_id, first_name, last_name, phone_number, street, city, state, zip_code FROM customer_matching WHERE run_id = $1"
-	rows, err := pool.Query(context.Background(), query, runID)
-	if err != nil {
-		log.Printf("Query failed: %v\n", err)
-		return nil
-	}
-	defer rows.Close()
-
-	var candidates []Candidate
-	for rows.Next() {
-		var req MatchRequest
-		err = rows.Scan(&req.ID, &req.FirstName, &req.LastName, &req.PhoneNumber, &req.Street, &req.City, &req.State, &req.ZipCode)
-		if err != nil {
-			log.Printf("Row scan failed: %v\n", err)
-			continue
-		}
-
-		// Process each record
-		standardizedAddress, err := StandardizeAddress(req.Street)
-		if err != nil {
-			log.Printf("Failed to standardize address: %v\n", err)
-			continue
-		}
-
-		referenceEntities := LoadReferenceEntities(pool)
-		binaryKey := CalculateBinaryKey(referenceEntities, strings.ToLower(standardizedAddress))
-
-		candidateQuery := "SELECT customer_id, first_name, last_name, phone_number, street, city, state, zip_code FROM customer_keys WHERE binary_key = $1"
-		candidateRows, err := pool.Query(context.Background(), candidateQuery, binaryKey)
-		if err != nil {
-			log.Printf("Candidate query failed: %v\n", err)
-			continue
-		}
-		defer candidateRows.Close()
-
-		for candidateRows.Next() {
-			var candidate Candidate
-			err = candidateRows.Scan(&candidate.CustomerID, &candidate.FirstName, &candidate.LastName, &candidate.PhoneNumber, &candidate.Street, &candidate.City, &candidate.State, &candidate.ZipCode)
-			if err != nil {
-				log.Printf("Candidate row scan failed: %v\n", err)
-				continue
-			}
-
-			// Standardize candidate address
-			standardizedCandidateAddress, err := StandardizeAddress(candidate.Street)
-			if err != nil {
-				log.Printf("Failed to standardize candidate address: %v\n", err)
-				continue
-			}
-
-			features := ExtractFeatures(req, candidate, standardizedCandidateAddress)
-			score := scorer.Score(features)
-			candidate.Score = score
-
-			candidates = append(candidates, candidate)
-		}
-	}
-
-	// Sort candidates by score in descending order
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].Score > candidates[j].Score
-	})
-
-	return candidates
+	return nil
 }
