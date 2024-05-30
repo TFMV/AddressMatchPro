@@ -439,3 +439,62 @@ where cm.run_id = 0 and exists (
 ORDER BY
     m.similarity ASC, m.matched_tfidf desc NULLS LAST
 limit 10;
+
+
+with matches as (select input.customer_id as input_customer_id,
+                        input.run_id as input_run_id,
+                        candidates.customer_id as candidate_customer_id,
+                        candidates.run_id as candidate_run_id,
+                        candidate_vec.vector_embedding <=> input_vec.vector_embedding AS similarity
+                 from customer_matching candidates
+                          join customer_matching input
+                               on ((candidates.state = input.state OR
+                                    candidates.zip_code = input.zip_code) and
+                                   (candidates.zip_code = input.zip_code OR
+                                    candidates.city = input.city OR
+                                    candidates.phone_number = input.phone_number)
+                                   )
+                          join customer_vector_embedding candidate_vec
+                               on (candidate_vec.customer_id = candidates.customer_id and
+                                   candidate_vec.run_id = candidates.run_id)
+                          join customer_vector_embedding input_vec
+                               on (input_vec.customer_id = input.customer_id and
+                                   input_vec.run_id = input.run_id)
+                 where candidates.run_id = 0
+                   and input.run_id = 94),
+    bin_keys as (
+        select candidate.customer_id as candidate_customer_id,
+               candidate.run_id as candidate_run_id,
+               input.customer_id as input_customer_id,
+               input.run_id as input_run_id
+        from customer_keys candidate
+        join customer_keys input
+        on (candidate.binary_key = input.binary_key)
+        join matches
+        on (candidate.customer_id = matches.candidate_customer_id and
+            candidate.run_id = matches.candidate_run_id and
+            input.customer_id = matches.input_customer_id and
+            input.run_id = matches.input_run_id)
+    )
+select matches.input_customer_id,
+       matches.candidate_customer_id,
+       case when bin_keys.candidate_customer_id is null then false else true end as binary_key_match,
+       sum(input_tfidf.ngram_tfidf * candidate_tfidf.ngram_tfidf) as tfidf_score
+from matches
+left outer join bin_keys
+on (matches.candidate_run_id = bin_keys.candidate_run_id and
+    matches.candidate_customer_id = bin_keys.candidate_run_id and
+    matches.input_run_id = bin_keys.input_run_id and
+    matches.input_customer_id = bin_keys.input_customer_id)
+join customer_tokens input_tfidf
+on (input_tfidf.run_id = matches.input_run_id and
+    input_tfidf.customer_id = matches.input_customer_id)
+join customer_tokens candidate_tfidf
+on (candidate_tfidf.run_id = matches.candidate_run_id and
+    candidate_tfidf.customer_id = matches.candidate_customer_id and
+    candidate_tfidf.entity_type_id = input_tfidf.entity_type_id and
+   candidate_tfidf.ngram_token = input_tfidf.ngram_token)
+where matches.similarity >= .1
+group by matches.input_customer_id,
+         matches.candidate_customer_id,
+         case when bin_keys.candidate_customer_id is null then false else true end;

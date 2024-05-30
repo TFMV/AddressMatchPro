@@ -74,7 +74,7 @@ func FindMatches(req MatchRequest, pool *pgxpool.Pool) []Candidate {
 	log.Printf("Starting FindMatches for request: %+v\n", req)
 
 	// Find potential matches based on binary key or vector similarity
-	candidates, err := FindMatchesForRunID(pool, req.RunID)
+	candidates, err := FindPotentialMatches(pool, req.RunID)
 	if err != nil {
 		log.Printf("Error finding potential matches: %v\n", err)
 		return nil
@@ -105,9 +105,9 @@ func FindMatches(req MatchRequest, pool *pgxpool.Pool) []Candidate {
 	return candidates
 }
 
-// FindMatchesForRunID finds matches for all records within a run_id
-func FindMatchesForRunID(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
-	// SQL query to find potential matches for all records within the run_id
+// FindPotentialMatches finds potential matches based on binary key or vector similarity
+func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
+	// SQL query to find potential matches
 	query := `
 	WITH embeddings AS (
 		SELECT customer_id, vector_embedding
@@ -128,7 +128,7 @@ func FindMatchesForRunID(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 		ON
 			cv0.vector_embedding <=> e.vector_embedding <= 0.2 -- Adjusted threshold
 		WHERE
-			cv0.run_id = $1
+			cv0.run_id = 0
 	),
 	matching_keys AS (
 		SELECT
@@ -141,7 +141,7 @@ func FindMatchesForRunID(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 		ON
 			ck0.binary_key = ck.binary_key
 		WHERE
-			ck0.run_id = $1
+			ck0.run_id = 0
 			AND ck.run_id = $1
 	),
 	combined_matches AS (
@@ -176,7 +176,7 @@ func FindMatchesForRunID(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 			vt0.customer_id = cm.customer_id
 			AND vt.customer_id = cm.matched_customer_id
 		WHERE
-			vt0.run_id = $1
+			vt0.run_id = 0
 			AND vt.run_id = $1
 		GROUP BY
 			vt0.customer_id
@@ -207,8 +207,18 @@ func FindMatchesForRunID(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 		COALESCE(m.matched_tfidf, 0) as matched_tfidf
 	FROM matches m
 	JOIN customer_matching cm ON cm.customer_id = m.customer_id
-	WHERE cm.run_id = $1
-	ORDER BY m.similarity ASC, m.matched_tfidf DESC NULLS LAST;
+	WHERE cm.run_id = 0 AND EXISTS (
+		SELECT 1
+		FROM customer_matching cm2
+		WHERE cm2.run_id = 0 AND
+			  (cm2.state = cm.state OR cm2.zip_code = cm.zip_code) AND
+			  (cm2.zip_code = cm.zip_code OR
+			   cm2.city = cm.city OR
+			   cm2.phone_number = cm.phone_number) AND
+			  cm2.customer_id = cm.customer_id
+	)
+	ORDER BY m.similarity ASC, m.matched_tfidf DESC NULLS LAST
+	LIMIT 10;
 	`
 
 	// Log the query and the runID parameter
