@@ -48,12 +48,15 @@ conn = psycopg2.connect(
     user="postgres",
     password="your_dbpassword",
     host="localhost",
-    port="5432"
+    port="5432",
 )
 cur = conn.cursor()
 
 # Fetch customer data from customer_matching with the given run_id
-cur.execute("SELECT customer_id, first_name, last_name, street, city, state, zip_code FROM customer_matching WHERE run_id = %s", (run_id,))
+cur.execute(
+    "SELECT customer_id, first_name, last_name, street, city, state, zip_code FROM customer_matching WHERE run_id = %s",
+    (run_id,),
+)
 customers = cur.fetchall()
 
 # Process each customer and generate embeddings
