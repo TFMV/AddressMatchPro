@@ -160,11 +160,13 @@ func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, nu
 		for res := range resultCh {
 			batch = append(batch, res)
 			if len(batch) >= batchSize {
+				log.Printf("Inserting batch of size %d into customer_keys\n", len(batch))
 				InsertBatch(pool, batch, runID)
 				batch = batch[:0] // reset batch
 			}
 		}
 		if len(batch) > 0 {
+			log.Printf("Inserting final batch of size %d into customer_keys\n", len(batch))
 			InsertBatch(pool, batch, runID)
 		}
 	}()
@@ -182,6 +184,27 @@ func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, nu
 	close(addressCh)
 	wg.Wait()
 	close(resultCh)
+}
+
+// InsertBatch inserts a batch of results into the database
+func InsertBatch(pool *pgxpool.Pool, batch [][2]interface{}, runID int) {
+	batchSize := len(batch)
+	ids := make([]interface{}, batchSize)
+	keys := make([]interface{}, batchSize)
+
+	for i, record := range batch {
+		ids[i] = record[0]
+		keys[i] = record[1]
+	}
+
+	log.Printf("Executing batch insert with %d records\n", batchSize)
+	_, err := pool.Exec(context.Background(),
+		"INSERT INTO customer_keys (customer_id, binary_key, run_id) SELECT UNNEST($1::int[]), UNNEST($2::text[]), $3",
+		ids, keys, runID,
+	)
+	if err != nil {
+		log.Fatalf("Batch insert failed: %v\n", err)
+	}
 }
 
 // ProcessSingleRecord processes a single record and inserts it into the database

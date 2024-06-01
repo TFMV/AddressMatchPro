@@ -57,7 +57,10 @@ func MatchSingleHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// Load reference entities
 		referenceEntities := matcher.LoadReferenceEntities(pool)
+
+		// Process customer addresses and generate binary keys
 		matcher.ProcessCustomerAddresses(pool, referenceEntities, 10, runID)
 
 		// Generate TF/IDF vectors for the single record
@@ -74,7 +77,7 @@ func MatchSingleHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		// Find matches
-		candidates := matcher.FindMatches(req, matcher.NewScorer(), pool)
+		candidates := matcher.FindMatches(req, pool)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(candidates)
