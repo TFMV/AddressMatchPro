@@ -26,7 +26,6 @@
 //
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
-
 package handlers
 
 import (
@@ -77,6 +76,12 @@ func MatchBatchHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// Load reference entities
+		referenceEntities := matcher.LoadReferenceEntities(pool)
+
+		// Process customer addresses and generate binary keys
+		matcher.ProcessCustomerAddresses(pool, referenceEntities, 10, runID)
+
 		// Generate TF/IDF vectors for the batch
 		matcher.GenerateTFIDF(pool, runID)
 
@@ -88,7 +93,7 @@ func MatchBatchHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		// Run the match query for the entire space of records within the run_id
-		candidates, err := matcher.FindMatchesForRunID(pool, runID)
+		candidates, err := matcher.FindPotentialMatches(pool, runID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to find matches: %v", err), http.StatusInternalServerError)
 			return
