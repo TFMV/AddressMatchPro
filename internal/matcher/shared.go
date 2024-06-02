@@ -100,26 +100,6 @@ func CalculateBinaryKey(referenceEntities []string, street string) string {
 	return binaryKey.String()
 }
 
-// Insert a batch of results into the database
-func InsertBatch(pool *pgxpool.Pool, batch [][2]interface{}, runID int) {
-	batchSize := len(batch)
-	ids := make([]interface{}, batchSize)
-	keys := make([]interface{}, batchSize)
-
-	for i, record := range batch {
-		ids[i] = record[0]
-		keys[i] = record[1]
-	}
-
-	_, err := pool.Exec(context.Background(),
-		"INSERT INTO customer_keys (customer_id, binary_key, run_id) SELECT UNNEST($1::int[]), UNNEST($2::text[]), $3",
-		ids, keys, runID,
-	)
-	if err != nil {
-		log.Fatalf("Batch insert failed: %v\n", err)
-	}
-}
-
 // ProcessCustomerAddresses processes customer addresses and generates binary keys
 func ProcessCustomerAddresses(pool *pgxpool.Pool, referenceEntities []string, numWorkers int, runID int) {
 	// Query the customer_matching table with the specified run_id
@@ -299,27 +279,6 @@ func GenerateEmbeddingsPythonScript(scriptPath string, runID int) error {
 		return fmt.Errorf("error running Python script: %v, output: %s", err, string(output))
 	}
 	return nil
-}
-
-// GetCustomerIDs fetches all unique customer IDs for the given run ID
-func GetCustomerIDs(pool *pgxpool.Pool, runID int) ([]int, error) {
-	query := `SELECT DISTINCT customer_id FROM customer_matching WHERE run_id = $1`
-	rows, err := pool.Query(context.Background(), query, runID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var customerIDs []int
-	for rows.Next() {
-		var customerID int
-		if err := rows.Scan(&customerID); err != nil {
-			return nil, err
-		}
-		customerIDs = append(customerIDs, customerID)
-	}
-
-	return customerIDs, nil
 }
 
 // InsertFromLoadTable inserts records from the load_table into customer_matching
