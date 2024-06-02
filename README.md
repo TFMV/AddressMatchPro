@@ -50,8 +50,8 @@ AddressMatchPro is an advanced entity matching solution leveraging machine learn
 - [x] Implement n-gram frequency similarity for binary key generation.
 - [x] Calculate and insert TF-IDF vectors.
 - [x] Generate vector embeddings using Python and spaCy.
-- [x] Store and manage `run_id` for different data loads.
-- [x] Clear old candidates from tables using `run_id`.
+- [x] Support single match request use case
+- [x] Support batch match requests
 
 ### Phase 3: API Development
 
@@ -60,13 +60,13 @@ AddressMatchPro is an advanced entity matching solution leveraging machine learn
 - [x] Develop endpoint for batch record matching.
 - [x] Implement middleware for request validation and logging.
 - [x] Implement Fast CSV Loader
-- [ ] Develop utility functions for response formatting.
+- [x] Develop utility functions for response formatting.
 
 ### Phase 4: Testing and Optimization
 
 - [ ] Write unit and integration tests.
 - [x] Optimize matching algorithms for performance.
-- [ ] Perform load testing and scalability improvements.
+- [x] Perform load testing and scalability improvements.
 
 ### Phase 5: Deployment
 
