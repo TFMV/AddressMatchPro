@@ -119,7 +119,7 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int, topN int) ([]Candidate,
 		   on (input_vec.customer_id = input.customer_id and
 			   input_vec.run_id = input.run_id)
 		where candidates.run_id = 0
-		and input.run_id = 0),
+		and input.run_id = $1),
 		bin_keys as (
 			select input.customer_id as input_customer_id,
 				   match.customer_id as match_customer_id
