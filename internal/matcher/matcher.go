@@ -50,7 +50,6 @@ type MatchRequest struct {
 	ZipCode     string `json:"zip_code"`
 	TopN        int    `json:"top_n"`
 	RunID       int    `json:"run_id"`
-	ID          int    `json:"id"`
 	ScriptPath  string `json:"script_path"`
 }
 
@@ -88,22 +87,22 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int, topN int) ([]Candidate,
 	with matches as (
 		select input.customer_id as input_customer_id,
 			input.run_id as input_run_id,
-			coalesce(input.first_name, '') as input_first_name,
-			coalesce(input.last_name, '') as input_last_name,
-			coalesce(input.street, '') as input_street,
-			coalesce(input.city, '') as input_city,
-			coalesce(input.state, '') as input_state,
-			coalesce(input.zip_code, '') as input_zip_code,
-			coalesce(input.phone_number, '') as input_phone_number,
+			input.first_name as input_first_name,
+			input.last_name as input_last_name,
+			input.street as input_street,
+			input.city as input_city,
+			input.state as input_state,
+			input.zip_code as input_zip_code,
+			input.phone_number as input_phone_number,
 			candidates.customer_id as candidate_customer_id,
 			candidates.run_id as candidate_run_id,
-			coalesce(candidates.first_name, '') as candidate_first_name,
-			coalesce(candidates.last_name, '') as candidate_last_name,
-			coalesce(candidates.street, '') as candidate_street,
-			coalesce(candidates.city, '') as candidate_city,
-			coalesce(candidates.state, '') as candidate_state,
-			coalesce(candidates.zip_code, '') as candidate_zip_code,
-			coalesce(candidates.phone_number, '') as candidate_phone_number,
+			candidates.first_name as candidate_first_name,
+			candidates.last_name as candidate_last_name,
+			candidates.street as candidate_street,
+			candidates.city as candidate_city,
+			candidates.state as candidate_state,
+			candidates.zip_code as candidate_zip_code,
+			candidates.phone_number as candidate_phone_number,
 			candidate_vec.vector_embedding <=> input_vec.vector_embedding AS similarity
 		from customer_matching candidates
 		join customer_matching input
@@ -152,7 +151,7 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int, topN int) ([]Candidate,
 			   coalesce(matches.similarity, 100) as similarity,
 			   case when bin_keys.match_customer_id is null then false else true end as bin_key_match,
 			   sum(coalesce(input_tfidf.ngram_tfidf, 0) * coalesce(candidate_tfidf.ngram_tfidf, 0)) as tfidf_score,
-			   rank() over (partition by matches.input_customer_id order by similarity) as rank
+			   rank() over (partition by matches.input_customer_id order by coalesce(matches.similarity, 100)) as rank
 		from matches
 		join customer_tokens input_tfidf
 		on (input_tfidf.run_id = matches.input_run_id and
