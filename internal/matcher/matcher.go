@@ -119,7 +119,7 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int, topN int) ([]Candidate,
 		   on (input_vec.customer_id = input.customer_id and
 			   input_vec.run_id = input.run_id)
 		where candidates.run_id = 0
-		and input.run_id = $1),
+		and input.run_id = 0),
 		bin_keys as (
 			select input.customer_id as input_customer_id,
 				   match.customer_id as match_customer_id
@@ -164,9 +164,12 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int, topN int) ([]Candidate,
 		left outer join bin_keys
 		on (bin_keys.input_customer_id = matches.input_customer_id and
 			bin_keys.match_customer_id = matches.candidate_customer_id)
-		where matches.similarity <= .1 and
-		      matches.input_run_id != matches.candidate_run_id and
-			  matches.input_customer_id != matches.candidate_customer_id
+		where matches.similarity <= .1  and
+		      not exists (
+		          select 'tommy was here'
+		          from matches m
+		          where m.candidate_customer_id = matches.input_customer_id and
+		                m.candidate_run_id = matches.input_run_id)
 		group by matches.input_customer_id,
 			   matches.input_run_id,
 			   matches.input_first_name,
