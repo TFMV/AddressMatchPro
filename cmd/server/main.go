@@ -37,13 +37,12 @@ import (
 	"github.com/TFMV/AddressMatchPro/pkg/api"
 	"github.com/TFMV/AddressMatchPro/pkg/config"
 	"github.com/TFMV/AddressMatchPro/pkg/db"
-
 	"github.com/gin-gonic/gin"
 )
 
 // @title AddressMatchPro API
 // @version 1.0
-// @description This is a AddressMatchPro server.
+// @description This is an AddressMatchPro server.
 // @termsOfService http://swagger.io/terms/
 
 // @contact.name API Support
@@ -85,6 +84,7 @@ func main() {
 
 	// Set up the HTTP server
 	router := gin.Default()
+
 	api.SetupRoutes(router, pool)
 
 	fmt.Println("Starting server on :8080")
