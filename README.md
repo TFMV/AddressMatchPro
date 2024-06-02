@@ -1,14 +1,10 @@
-# AddressMatchPro
-
-![AddressMatchPro](assets/FuzzyMatchFinder.webp)
-
-Welcome to AddressMatchPro! This project is currently under development, but we're excited to share our progress and goals with you. Stay tuned for updates!
-
-## Project Overview
+# ![AddressMatchPro](assets/amp.webp)
 
 AddressMatchPro is an advanced entity matching solution leveraging machine learning to provide approximate matching. Our approach combines traditional algorithms with modern machine learning techniques to deliver high-accuracy matching results.
 
 ## Approach
+
+![AddressMatchPro](assets/inspector-gadget.png)
 
 ### Core Matching Logic
 
