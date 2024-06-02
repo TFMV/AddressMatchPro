@@ -10,27 +10,19 @@ AddressMatchPro is an advanced entity matching solution leveraging machine learn
 
 ## Approach
 
-### Data Ingestion and Preparation
-
-- **Data Loading:** Load customer data from a provided dataset into a new table, `customer_matching`, in Postgres.
-- **Data Partitioning:** Use `run_id` to manage different data loads and ensure efficient processing and querying.
-
 ### Core Matching Logic
 
-- **Binary Key Generation:** Generate binary keys for addresses using reference entities and n-gram frequency similarity.
-- **TF-IDF Calculation:** Calculate term frequency-inverse document frequency (TF-IDF) vectors for customer data to enhance matching precision.
-- **Vector Embeddings:** Generate vector embeddings for customer data using spaCy, leveraging both address data and other attributes.
+- **Vector Similarity:** Utilizes vector embeddings to measure similarity between customer records.
+- **TF-IDF Scoring:** Implements Term Frequency-Inverse Document Frequency (TF-IDF) to score and rank potential matches.
+- **Trigram Cosine Similarity:** Computes cosine similarity using trigram frequencies for key fields such as first name, last name, street, city, phone number, and zip code.
+- **Bin Key Matching:** Incorporates binary key matching for additional accuracy.
+- **Flexible Configuration:** Easily configurable to match based on different criteria and fields.
 
 ### API Development
 
-- **Single Record Matching:** Develop an API endpoint to match a single record against the candidate space.
-- **Batch Record Matching:** Develop an API endpoint to match multiple records provided in a CSV file against the candidate space.
-- **Efficient Querying:** Utilize optimized SQL queries to retrieve potential matches based on binary keys or vector similarity.
-
-### Integration with Machine Learning
-
-- **ML Model Integration:** Integrate machine learning models to further enhance the accuracy of the matching process.
-- **Scoring System:** Implement a scoring system to rank match candidates based on similarity scores.
+- **Single Record Matching:** An API endpoint to match a single record against the candidate space.
+- **Batch Record Matching:** An API endpoint to match multiple records provided in a CSV file against the candidate space.
+- **Duplicate Detection:** An API endpoint to detect potential duplicate records in the candidate space.
 
 ## Major Goals and Milestones
 
