@@ -60,6 +60,12 @@ func MatchSingleHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			return
 		}
 
+		// Load reference entities once
+		referenceEntities := matcher.LoadReferenceEntities(pool)
+
+		// Process customer addresses and generate binary keys with concurrency
+		matcher.ProcessCustomerAddresses(pool, referenceEntities, 1, runID)
+
 		// Generate TF/IDF vectors for the single record
 		matcher.GenerateTFIDF(pool, runID)
 
@@ -120,6 +126,12 @@ func MatchBatchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			return
 		}
 
+		// Load reference entities once
+		referenceEntities := matcher.LoadReferenceEntities(pool)
+
+		// Process customer addresses and generate binary keys with concurrency
+		matcher.ProcessCustomerAddresses(pool, referenceEntities, 10, runID)
+
 		// Generate TF/IDF vectors for the batch
 		matcher.GenerateTFIDF(pool, runID)
 
@@ -129,24 +141,11 @@ func MatchBatchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to generate embeddings: %v", err)})
 			return
 		}
-
-		// Fetch all unique customer IDs for the given run ID
-		customerIDs, err := matcher.GetCustomerIDs(pool, runID)
+		// Run the match query for the entire space of records within the run_id
+		allCandidates, err := matcher.FindPotentialMatches(pool, runID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get customer IDs: %v", err)})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to find matches: %v", err)})
 			return
-		}
-
-		var allCandidates []matcher.Candidate
-		for _, customerID := range customerIDs {
-			req := matcher.MatchRequest{
-				RunID: runID,
-				ID:    customerID,
-				TopN:  10,
-			}
-
-			candidates := matcher.FindMatches(req, pool)
-			allCandidates = append(allCandidates, candidates...)
 		}
 
 		c.JSON(http.StatusOK, gin.H{
