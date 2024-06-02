@@ -67,6 +67,29 @@ func MatchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// MatchDuplicates handles duplicate match requests
+func MatchDuplicates(pool *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req matcher.MatchRequest
+		if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Match Duplicates supports matching the candidate space (run_id = 0) to itself
+		req.RunID = 0
+
+		// Find matches
+		candidates, err := matcher.FindPotentialMatches(pool, req.RunID, req.TopN)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to find matches: %v", err)})
+			return
+		}
+
+		c.JSON(http.StatusOK, candidates)
+	}
+}
+
 func handleSingleMatch(c *gin.Context, pool *pgxpool.Pool, req matcher.MatchRequest) {
 	// Insert the single record into the database with a unique run_id
 	runID := matcher.CreateNewRun(pool, "Single Record Matching")

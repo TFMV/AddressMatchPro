@@ -164,7 +164,9 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int, topN int) ([]Candidate,
 		left outer join bin_keys
 		on (bin_keys.input_customer_id = matches.input_customer_id and
 			bin_keys.match_customer_id = matches.candidate_customer_id)
-		where matches.similarity <= .1
+		where matches.similarity <= .1 and
+		      matches.input_run_id != matches.candidate_run_id and
+			  matches.input_customer_id != matches.candidate_customer_id
 		group by matches.input_customer_id,
 			   matches.input_run_id,
 			   matches.input_first_name,
