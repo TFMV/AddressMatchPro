@@ -32,7 +32,7 @@ with matches as (select input.customer_id as input_customer_id,
                                on (input_vec.customer_id = input.customer_id and
                                    input_vec.run_id = input.run_id)
                  where candidates.run_id = 0
-                   and input.run_id = 97),
+                   and input.run_id = $1),
     bin_keys as (
         select candidate.customer_id as candidate_customer_id,
                candidate.run_id as candidate_run_id,
