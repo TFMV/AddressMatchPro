@@ -38,6 +38,9 @@ import (
 // Tokenize a string into n-grams
 func ngrams(s string, n int) []string {
 	normalized := normalizeString(s)
+	if len(normalized) < n {
+		return []string{normalized}
+	}
 	ngrams := make([]string, 0, len(normalized)-n+1)
 	for i := 0; i <= len(normalized)-n; i++ {
 		ngrams = append(ngrams, normalized[i:i+n])
