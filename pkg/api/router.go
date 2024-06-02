@@ -38,4 +38,5 @@ import (
 func SetupRoutes(router *gin.Engine, pool *pgxpool.Pool) {
 	router.GET("/healthz", HealthCheckHandler())
 	router.POST("/match", MatchHandler(pool))
+	router.POST("/duplicates", MatchHandler(pool))
 }
