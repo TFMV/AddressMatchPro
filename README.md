@@ -2,8 +2,6 @@
 
 ![AddressMatchPro](assets/FuzzyMatchFinder.webp)
 
-## 🚧 Under Construction 🚧
-
 Welcome to AddressMatchPro! This project is currently under development, but we're excited to share our progress and goals with you. Stay tuned for updates!
 
 ## Project Overview
