@@ -56,169 +56,137 @@ type MatchRequest struct {
 
 // Candidate represents a potential match
 type Candidate struct {
-	MatchedCustomerID int     `json:"matched_customer_id"`
-	Similarity        float64 `json:"similarity"`
-	FirstName         string  `json:"first_name"`
-	LastName          string  `json:"last_name"`
-	PhoneNumber       string  `json:"phone_number"`
-	Street            string  `json:"street"`
-	City              string  `json:"city"`
-	State             string  `json:"state"`
-	ZipCode           string  `json:"zip_code"`
-	MatchedTFIDF      float64 `json:"matched_tfidf"`
-	Score             float64 `json:"score"`
+	InputCustomerID      int     `json:"input_customer_id"`
+	InputRunID           int     `json:"input_run_id"`
+	InputFirstName       string  `json:"input_first_name"`
+	InputLastName        string  `json:"input_last_name"`
+	InputStreet          string  `json:"input_street"`
+	InputCity            string  `json:"input_city"`
+	InputState           string  `json:"input_state"`
+	InputZipCode         string  `json:"input_zip_code"`
+	InputPhoneNumber     string  `json:"input_phone_number"`
+	CandidateCustomerID  int     `json:"candidate_customer_id"`
+	CandidateRunID       int     `json:"candidate_run_id"`
+	CandidateFirstName   string  `json:"candidate_first_name"`
+	CandidateLastName    string  `json:"candidate_last_name"`
+	CandidateStreet      string  `json:"candidate_street"`
+	CandidateCity        string  `json:"candidate_city"`
+	CandidateState       string  `json:"candidate_state"`
+	CandidateZipCode     string  `json:"candidate_zip_code"`
+	CandidatePhoneNumber string  `json:"candidate_phone_number"`
+	Similarity           float64 `json:"similarity"`
+	BinKeyMatch          bool    `json:"bin_key_match"`
+	TfidfScore           float64 `json:"tfidf_score"`
+	Rank                 int     `json:"rank"`
+	Score                float64 `json:"score"`
 }
 
-// FindMatches finds the best matches for a given MatchRequest
-func FindMatches(req MatchRequest, pool *pgxpool.Pool) []Candidate {
-	log.Printf("Starting FindMatches for request: %+v\n", req)
-
-	// Find potential matches based on binary key or vector similarity
-	candidates, err := FindPotentialMatches(pool, req.RunID)
-	if err != nil {
-		log.Printf("Error finding potential matches: %v\n", err)
-		return nil
-	}
-
-	log.Printf("Found %d potential matches\n", len(candidates))
-
-	// Rank candidates based on composite score
-	for i, candidate := range candidates {
-		// Compute the score as 80% vector similarity and 20% n-gram TFIDF score
-		score := 0.8*candidate.Similarity + 0.2*candidate.MatchedTFIDF
-		candidates[i].Score = math.Max(1, math.Min(100, score*100))
-
-		log.Printf("Candidate %d scored: %f\n", candidate.MatchedCustomerID, candidates[i].Score)
-	}
-
-	// Sort candidates by score in descending order
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].Score > candidates[j].Score
-	})
-
-	// If the number of candidates exceeds the requested TopN, truncate the list
-	if len(candidates) > req.TopN {
-		candidates = candidates[:req.TopN]
-	}
-
-	log.Printf("Returning %d candidates\n", len(candidates))
-	return candidates
-}
-
-// FindPotentialMatches finds potential matches based on binary key or vector similarity
-func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
+// FindPotentialMatches finds potential matches and scores them based on composite score
+func FindPotentialMatches(pool *pgxpool.Pool, runID int, topN int) ([]Candidate, error) {
 	// SQL query to find potential matches
 	query := `
-	WITH embeddings AS (
-		SELECT customer_id, vector_embedding
-		FROM customer_vector_embedding
-		WHERE run_id = $1
-	),
-	matching_embeddings AS (
-		SELECT
-			cv0.customer_id,
-			cv0.vector_embedding,
-			e.customer_id AS matched_customer_id,
-			e.vector_embedding AS matched_vector_embedding,
-			cv0.vector_embedding <=> e.vector_embedding AS similarity
-		FROM
-			customer_vector_embedding cv0
-		JOIN
-			embeddings e
-		ON
-			cv0.vector_embedding <=> e.vector_embedding <= 0.2 -- Adjusted threshold
-		WHERE
-			cv0.run_id = 0
-	),
-	matching_keys AS (
-		SELECT
-			ck0.customer_id,
-			ck.customer_id AS matched_customer_id
-		FROM
-			customer_keys ck0
-		JOIN
-			customer_keys ck
-		ON
-			ck0.binary_key = ck.binary_key
-		WHERE
-			ck0.run_id = 0
-			AND ck.run_id = $1
-	),
-	combined_matches AS (
-		SELECT
-			COALESCE(me.customer_id, mk.customer_id) AS customer_id,
-			me.vector_embedding,
-			COALESCE(me.matched_customer_id, mk.matched_customer_id) AS matched_customer_id,
-			me.matched_vector_embedding,
-			me.similarity
-		FROM
-			matching_embeddings me
-		FULL OUTER JOIN
-			matching_keys mk
-		ON
-			me.customer_id = mk.customer_id AND me.matched_customer_id = mk.matched_customer_id
-	),
-	ngram_sums AS (
-		SELECT
-			vt0.customer_id,
-			SUM(vt0.ngram_tfidf) AS candidate_tfidf,
-			SUM(vt.ngram_tfidf) AS matched_tfidf
-		FROM
-			customer_tokens vt0
-		JOIN
-			customer_tokens vt
-		ON
-			vt0.ngram_token = vt.ngram_token
-			AND vt0.entity_type_id = vt.entity_type_id
-		JOIN
-			combined_matches cm
-		ON
-			vt0.customer_id = cm.customer_id
-			AND vt.customer_id = cm.matched_customer_id
-		WHERE
-			vt0.run_id = 0
-			AND vt.run_id = $1
-		GROUP BY
-			vt0.customer_id
-	),
-	matches AS (
-		SELECT 
-			cm.customer_id,
-			cm.vector_embedding,
-			cm.matched_customer_id,
-			cm.matched_vector_embedding,
-			cm.similarity,
-			ns.candidate_tfidf,
-			ns.matched_tfidf
-		FROM combined_matches cm
-		LEFT JOIN ngram_sums ns ON cm.customer_id = ns.customer_id
-	)
-	SELECT 
-		cm.customer_id as matched_customer_id,
-		COALESCE(m.similarity, 0) as similarity,
-		COALESCE(cm.first_name, '') AS first_name,
-		COALESCE(cm.last_name, '') AS last_name,
-		COALESCE(cm.phone_number, '') AS phone_number,
-		COALESCE(cm.street, '') AS street,
-		COALESCE(cm.city, '') AS city,
-		COALESCE(cm.state, '') AS state,
-		COALESCE(cm.zip_code, '') AS zip_code,
-		COALESCE(m.similarity, 0) as similarity,
-		COALESCE(m.matched_tfidf, 0) as matched_tfidf
-	FROM matches m
-	JOIN customer_matching cm ON cm.customer_id = m.customer_id
-	WHERE cm.run_id = 0 AND EXISTS (
-		SELECT 1
-		FROM customer_matching cm2
-		WHERE cm2.run_id = 0 AND
-			  (cm2.state = cm.state OR cm2.zip_code = cm.zip_code) AND
-			  (cm2.zip_code = cm.zip_code OR
-			   cm2.city = cm.city OR
-			   cm2.phone_number = cm.phone_number) AND
-			  cm2.customer_id = cm.customer_id
-	)
-	ORDER BY m.similarity ASC, m.matched_tfidf DESC NULLS LAST
-	LIMIT 10;
+	with matches as (
+		select input.customer_id as input_customer_id,
+			input.run_id as input_run_id,
+			coalesce(input.first_name, '') as input_first_name,
+			coalesce(input.last_name, '') as input_last_name,
+			coalesce(input.street, '') as input_street,
+			coalesce(input.city, '') as input_city,
+			coalesce(input.state, '') as input_state,
+			coalesce(input.zip_code, '') as input_zip_code,
+			coalesce(input.phone_number, '') as input_phone_number,
+			candidates.customer_id as candidate_customer_id,
+			candidates.run_id as candidate_run_id,
+			coalesce(candidates.first_name, '') as candidate_first_name,
+			coalesce(candidates.last_name, '') as candidate_last_name,
+			coalesce(candidates.street, '') as candidate_street,
+			coalesce(candidates.city, '') as candidate_city,
+			coalesce(candidates.state, '') as candidate_state,
+			coalesce(candidates.zip_code, '') as candidate_zip_code,
+			coalesce(candidates.phone_number, '') as candidate_phone_number,
+			candidate_vec.vector_embedding <=> input_vec.vector_embedding AS similarity
+		from customer_matching candidates
+		join customer_matching input
+		   on ((candidates.state = input.state OR
+				candidates.zip_code = input.zip_code) and
+			   (candidates.zip_code = input.zip_code OR
+				candidates.city = input.city OR
+				candidates.phone_number = input.phone_number)
+			   )
+		join customer_vector_embedding candidate_vec
+		   on (candidate_vec.customer_id = candidates.customer_id and
+			   candidate_vec.run_id = candidates.run_id)
+		join customer_vector_embedding input_vec
+		   on (input_vec.customer_id = input.customer_id and
+			   input_vec.run_id = input.run_id)
+		where candidates.run_id = 0
+		and input.run_id = $1),
+		bin_keys as (
+			select input.customer_id as input_customer_id,
+				   match.customer_id as match_customer_id
+			from customer_keys input
+			join customer_keys match
+			on (input.binary_key = match.binary_key)
+			join matches
+			on (matches.input_customer_id = input.customer_id and
+				matches.candidate_customer_id = match.customer_id)
+		)
+		select coalesce(matches.input_customer_id, 0),
+			   coalesce(matches.input_run_id, 0),
+			   coalesce(matches.input_first_name, ''),
+			   coalesce(matches.input_last_name, ''),
+			   coalesce(matches.input_street, ''),
+			   coalesce(matches.input_city, ''),
+			   coalesce(matches.input_state, ''),
+			   coalesce(matches.input_zip_code, ''),
+			   coalesce(matches.input_phone_number, ''),
+			   coalesce(matches.candidate_customer_id, 0),
+			   coalesce(matches.candidate_run_id, 0),
+			   coalesce(matches.candidate_first_name, ''),
+			   coalesce(matches.candidate_last_name, ''),
+			   coalesce(matches.candidate_street, ''),
+			   coalesce(matches.candidate_city, ''),
+			   coalesce(matches.candidate_state, ''),
+			   coalesce(matches.candidate_zip_code, ''),
+			   coalesce(matches.candidate_phone_number, ''),
+			   coalesce(matches.similarity, 100) as similarity,
+			   case when bin_keys.match_customer_id is null then false else true end as bin_key_match,
+			   sum(coalesce(input_tfidf.ngram_tfidf, 0) * coalesce(candidate_tfidf.ngram_tfidf, 0)) as tfidf_score,
+			   rank() over (partition by matches.input_customer_id order by similarity) as rank
+		from matches
+		join customer_tokens input_tfidf
+		on (input_tfidf.run_id = matches.input_run_id and
+			input_tfidf.customer_id = matches.input_customer_id)
+		join customer_tokens candidate_tfidf
+		on (candidate_tfidf.run_id = matches.candidate_run_id and
+			candidate_tfidf.customer_id = matches.candidate_customer_id and
+			candidate_tfidf.entity_type_id = input_tfidf.entity_type_id and
+		   candidate_tfidf.ngram_token = input_tfidf.ngram_token)
+		left outer join bin_keys
+		on (bin_keys.input_customer_id = matches.input_customer_id and
+			bin_keys.match_customer_id = matches.candidate_customer_id)
+		where matches.similarity <= .1
+		group by matches.input_customer_id,
+			   matches.input_run_id,
+			   matches.input_first_name,
+			   matches.input_last_name,
+			   matches.input_street,
+			   matches.input_city,
+			   matches.input_state,
+			   matches.input_zip_code,
+			   matches.input_phone_number,
+			   matches.candidate_customer_id,
+			   matches.candidate_run_id,
+			   matches.candidate_first_name,
+			   matches.candidate_last_name,
+			   matches.candidate_street,
+			   matches.candidate_city,
+			   matches.candidate_state,
+			   matches.candidate_zip_code,
+			   matches.candidate_phone_number,
+			   matches.similarity,
+			   case when bin_keys.match_customer_id is null then false else true end
+		order by matches.input_customer_id, matches.similarity;
 	`
 
 	// Log the query and the runID parameter
@@ -236,32 +204,59 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 	// Iterate through the rows and populate the candidates slice
 	for rows.Next() {
 		var candidate Candidate
-		var firstName, lastName, phoneNumber, street, city, state, zipCode pgtype.Text
+		var inputFirstName, inputLastName, inputPhoneNumber, inputStreet, inputCity, inputState, inputZipCode pgtype.Text
+		var candidateFirstName, candidateLastName, candidatePhoneNumber, candidateStreet, candidateCity, candidateState, candidateZipCode pgtype.Text
+		var binKeyMatch pgtype.Bool
+		var rank pgtype.Int4
 
 		if err := rows.Scan(
-			&candidate.MatchedCustomerID,
+			&candidate.InputCustomerID,
+			&candidate.InputRunID,
+			&inputFirstName,
+			&inputLastName,
+			&inputStreet,
+			&inputCity,
+			&inputState,
+			&inputZipCode,
+			&inputPhoneNumber,
+			&candidate.CandidateCustomerID,
+			&candidate.CandidateRunID,
+			&candidateFirstName,
+			&candidateLastName,
+			&candidateStreet,
+			&candidateCity,
+			&candidateState,
+			&candidateZipCode,
+			&candidatePhoneNumber,
 			&candidate.Similarity,
-			&firstName,
-			&lastName,
-			&phoneNumber,
-			&street,
-			&city,
-			&state,
-			&zipCode,
-			&candidate.Similarity,
-			&candidate.MatchedTFIDF,
+			&binKeyMatch,
+			&candidate.TfidfScore,
+			&rank,
 		); err != nil {
 			return nil, err
 		}
 
 		// Convert pgtype.Text to string
-		candidate.FirstName = firstName.String
-		candidate.LastName = lastName.String
-		candidate.PhoneNumber = phoneNumber.String
-		candidate.Street = street.String
-		candidate.City = city.String
-		candidate.State = state.String
-		candidate.ZipCode = zipCode.String
+		candidate.InputFirstName = inputFirstName.String
+		candidate.InputLastName = inputLastName.String
+		candidate.InputPhoneNumber = inputPhoneNumber.String
+		candidate.InputStreet = inputStreet.String
+		candidate.InputCity = inputCity.String
+		candidate.InputState = inputState.String
+		candidate.InputZipCode = inputZipCode.String
+		candidate.CandidateFirstName = candidateFirstName.String
+		candidate.CandidateLastName = candidateLastName.String
+		candidate.CandidatePhoneNumber = candidatePhoneNumber.String
+		candidate.CandidateStreet = candidateStreet.String
+		candidate.CandidateCity = candidateCity.String
+		candidate.CandidateState = candidateState.String
+		candidate.CandidateZipCode = candidateZipCode.String
+		candidate.BinKeyMatch = binKeyMatch.Bool
+		candidate.Rank = int(rank.Int32)
+
+		// Compute the score as 80% vector similarity and 20% n-gram TFIDF score
+		score := 0.8*candidate.Similarity + 0.2*candidate.TfidfScore
+		candidate.Score = math.Max(1, math.Min(100, score*100))
 
 		candidates = append(candidates, candidate)
 	}
@@ -272,5 +267,16 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int) ([]Candidate, error) {
 	}
 
 	log.Printf("Total candidates found: %d\n", len(candidates)) // Log the total number of candidates found
+
+	// Sort candidates by score in descending order
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Score > candidates[j].Score
+	})
+
+	// If the number of candidates exceeds the requested TopN, truncate the list
+	if len(candidates) > topN {
+		candidates = candidates[:topN]
+	}
+
 	return candidates, nil
 }
