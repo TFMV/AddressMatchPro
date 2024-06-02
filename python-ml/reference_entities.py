@@ -31,6 +31,7 @@ import pandas as pd
 import psycopg2
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
+from sklearn.metrics import pairwise_distances_argmin_min
 
 # Connect to your PostgreSQL database
 conn = psycopg2.connect(
@@ -96,20 +97,18 @@ def abbreviate_street_name(street_name):
     abbreviated_tokens = [abbreviation_map.get(token, token) for token in tokens]
     return ' '.join(abbreviated_tokens)
 
-# Step 4: Select reference entities
-def select_reference_entity(group):
-    for street in group['street']:
-        if street in street_counts.index[:10]:
-            return abbreviate_street_name(street)
-    return abbreviate_street_name(group['street'].iloc[0])
+# Step 4: Find the street closest to the centroid of each cluster
+centroids = kmeans.cluster_centers_
+closest, _ = pairwise_distances_argmin_min(centroids, X)
 
-reference_entities = street_clusters.groupby('cluster').apply(select_reference_entity).reset_index(drop=True)
+# Select reference entities based on the closest streets to centroids
+reference_entities = [abbreviate_street_name(unique_streets[index]) for index in closest]
 
 print("Selected Reference Entities:")
 print(reference_entities)
 
 # Generate a single SQL INSERT statement
-values = ", ".join([f"({index + 1}, '{street}')" for index, street in reference_entities.items()])
+values = ", ".join([f"({index + 1}, '{street}')" for index, street in enumerate(reference_entities)])
 insert_statement = f"INSERT INTO public.reference_entities (ID, entity_value) VALUES {values};"
 
 # Print the SQL statement

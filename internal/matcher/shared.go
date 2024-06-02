@@ -289,3 +289,9 @@ func InsertFromLoadTable(pool *pgxpool.Pool, runID int) error {
 		 FROM batch_match`, runID)
 	return err
 }
+
+// TruncateBatchMatchTable truncates the batch_match table
+func TruncateBatchMatchTable(pool *pgxpool.Pool) error {
+	_, err := pool.Exec(context.Background(), "TRUNCATE TABLE batch_match")
+	return err
+}

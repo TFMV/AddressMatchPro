@@ -141,6 +141,12 @@ func handleBatchMatch(c *gin.Context, pool *pgxpool.Pool, file *multipart.FileHe
 		return
 	}
 
+	// truncate batch_match table
+	if err := matcher.TruncateBatchMatchTable(pool); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to truncate batch_match: %v", err)})
+		return
+	}
+
 	if err := utils.LoadCSV(pool, tempFile.Name()); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to load CSV: %v", err)})
 		return

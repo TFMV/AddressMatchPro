@@ -62,7 +62,7 @@ AddressMatchPro is an advanced entity matching solution leveraging machine learn
 ### Phase 5: Deployment
 
 - [ ] Set up CI/CD pipeline.
-- [ ] Deploy the API to Google Cloud Run.
+- [x] Deploy the API to Google Cloud Run.
 - [ ] Monitor and maintain the service.
 
 ## Examples
