@@ -56,29 +56,35 @@ type MatchRequest struct {
 
 // Candidate represents a potential match
 type Candidate struct {
-	InputCustomerID      int     `json:"input_customer_id"`
-	InputRunID           int     `json:"input_run_id"`
-	InputFirstName       string  `json:"input_first_name"`
-	InputLastName        string  `json:"input_last_name"`
-	InputStreet          string  `json:"input_street"`
-	InputCity            string  `json:"input_city"`
-	InputState           string  `json:"input_state"`
-	InputZipCode         string  `json:"input_zip_code"`
-	InputPhoneNumber     string  `json:"input_phone_number"`
-	CandidateCustomerID  int     `json:"candidate_customer_id"`
-	CandidateRunID       int     `json:"candidate_run_id"`
-	CandidateFirstName   string  `json:"candidate_first_name"`
-	CandidateLastName    string  `json:"candidate_last_name"`
-	CandidateStreet      string  `json:"candidate_street"`
-	CandidateCity        string  `json:"candidate_city"`
-	CandidateState       string  `json:"candidate_state"`
-	CandidateZipCode     string  `json:"candidate_zip_code"`
-	CandidatePhoneNumber string  `json:"candidate_phone_number"`
-	Similarity           float64 `json:"similarity"`
-	BinKeyMatch          bool    `json:"bin_key_match"`
-	TfidfScore           float64 `json:"tfidf_score"`
-	Rank                 int     `json:"rank"`
-	Score                float64 `json:"score"`
+	InputCustomerID          int     `json:"input_customer_id"`
+	InputRunID               int     `json:"input_run_id"`
+	InputFirstName           string  `json:"input_first_name"`
+	InputLastName            string  `json:"input_last_name"`
+	InputStreet              string  `json:"input_street"`
+	InputCity                string  `json:"input_city"`
+	InputState               string  `json:"input_state"`
+	InputZipCode             string  `json:"input_zip_code"`
+	InputPhoneNumber         string  `json:"input_phone_number"`
+	CandidateCustomerID      int     `json:"candidate_customer_id"`
+	CandidateRunID           int     `json:"candidate_run_id"`
+	CandidateFirstName       string  `json:"candidate_first_name"`
+	CandidateLastName        string  `json:"candidate_last_name"`
+	CandidateStreet          string  `json:"candidate_street"`
+	CandidateCity            string  `json:"candidate_city"`
+	CandidateState           string  `json:"candidate_state"`
+	CandidateZipCode         string  `json:"candidate_zip_code"`
+	CandidatePhoneNumber     string  `json:"candidate_phone_number"`
+	Similarity               float64 `json:"similarity"`
+	BinKeyMatch              bool    `json:"bin_key_match"`
+	TfidfScore               float64 `json:"tfidf_score"`
+	Rank                     int     `json:"rank"`
+	Score                    float64 `json:"score"`
+	TrigramCosineFirstName   float64 `json:"trigram_cosine_first_name"`
+	TrigramCosineLastName    float64 `json:"trigram_cosine_last_name"`
+	TrigramCosineStreet      float64 `json:"trigram_cosine_street"`
+	TrigramCosineCity        float64 `json:"trigram_cosine_city"`
+	TrigramCosinePhoneNumber float64 `json:"trigram_cosine_phone_number"`
+	TrigramCosineZipCode     float64 `json:"trigram_cosine_zip_code"`
 }
 
 // LoadSQLQuery loads an SQL query from a file
@@ -161,6 +167,14 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int, topN int) ([]Candidate,
 		candidate.CandidateZipCode = candidateZipCode.String
 		candidate.BinKeyMatch = binKeyMatch.Bool
 		candidate.Rank = int(rank.Int32)
+
+		// Calculate n-gram similarities
+		candidate.TrigramCosineFirstName = ngramFrequencySimilarity(candidate.InputFirstName, candidate.CandidateFirstName, 2)
+		candidate.TrigramCosineLastName = ngramFrequencySimilarity(candidate.InputLastName, candidate.CandidateLastName, 2)
+		candidate.TrigramCosineStreet = ngramFrequencySimilarity(candidate.InputStreet, candidate.CandidateStreet, 2)
+		candidate.TrigramCosineCity = ngramFrequencySimilarity(candidate.InputCity, candidate.CandidateCity, 2)
+		candidate.TrigramCosinePhoneNumber = ngramFrequencySimilarity(candidate.InputPhoneNumber, candidate.CandidatePhoneNumber, 2)
+		candidate.TrigramCosineZipCode = ngramFrequencySimilarity(candidate.InputZipCode, candidate.CandidateZipCode, 2)
 
 		// Compute the score as 80% vector similarity and 20% n-gram TFIDF score
 		score := 0.8*candidate.Similarity + 0.2*candidate.TfidfScore
