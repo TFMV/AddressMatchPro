@@ -4,8 +4,6 @@ Address Match Pro is an advanced entity matching solution leveraging machine lea
 
 ## Approach
 
-![AddressMatchPro](assets/inspector-gadget.png)
-
 ### Core Matching Logic
 
 - **Vector Similarity:** Utilizes vector embeddings to measure similarity between customer records.
@@ -249,3 +247,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Author
 
 Thomas F McGeehan V
+
+![AddressMatchPro](assets/inspector-gadget.png)
