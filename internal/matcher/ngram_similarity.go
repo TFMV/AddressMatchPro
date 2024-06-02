@@ -95,6 +95,9 @@ func getNgramFrequencies(ngrams []string) map[string]int {
 
 // Calculate n-gram frequency similarity between two strings
 func ngramFrequencySimilarity(s1, s2 string, n int) float64 {
+	if s1 == "" || s2 == "" {
+		return 0.0
+	}
 	ngramsA := ngrams(s1, n)
 	ngramsB := ngrams(s2, n)
 	return cosineSimilarity(ngramsA, ngramsB)
