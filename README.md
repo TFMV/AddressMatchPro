@@ -1,4 +1,4 @@
-# ![AddressMatchPro](assets/amp.webp)
+# ![AddressMatchPro](assets/amp.png)
 
 Address Match Pro is an advanced entity matching solution leveraging machine learning to provide approximate matching. Our approach combines traditional algorithms with modern machine learning techniques to deliver high-accuracy matching results.
 
