@@ -33,6 +33,7 @@ import (
 	"context"
 	"log"
 	"math"
+	"os"
 	"sort"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -80,118 +81,21 @@ type Candidate struct {
 	Score                float64 `json:"score"`
 }
 
+// LoadSQLQuery loads an SQL query from a file
+func LoadSQLQuery(filepath string) (string, error) {
+	queryBytes, err := os.ReadFile(filepath)
+	if err != nil {
+		return "", err
+	}
+	return string(queryBytes), nil
+}
+
 // FindPotentialMatches finds potential matches and scores them based on composite score
 func FindPotentialMatches(pool *pgxpool.Pool, runID int, topN int) ([]Candidate, error) {
-	// SQL query to find potential matches
-	query := `
-	with matches as (
-		select input.customer_id as input_customer_id,
-			input.run_id as input_run_id,
-			input.first_name as input_first_name,
-			input.last_name as input_last_name,
-			input.street as input_street,
-			input.city as input_city,
-			input.state as input_state,
-			input.zip_code as input_zip_code,
-			input.phone_number as input_phone_number,
-			candidates.customer_id as candidate_customer_id,
-			candidates.run_id as candidate_run_id,
-			candidates.first_name as candidate_first_name,
-			candidates.last_name as candidate_last_name,
-			candidates.street as candidate_street,
-			candidates.city as candidate_city,
-			candidates.state as candidate_state,
-			candidates.zip_code as candidate_zip_code,
-			candidates.phone_number as candidate_phone_number,
-			candidate_vec.vector_embedding <=> input_vec.vector_embedding AS similarity
-		from customer_matching candidates
-		join customer_matching input
-		   on ((candidates.state = input.state OR
-				candidates.zip_code = input.zip_code) and
-			   (candidates.zip_code = input.zip_code OR
-				candidates.city = input.city OR
-				candidates.phone_number = input.phone_number)
-			   )
-		join customer_vector_embedding candidate_vec
-		   on (candidate_vec.customer_id = candidates.customer_id and
-			   candidate_vec.run_id = candidates.run_id)
-		join customer_vector_embedding input_vec
-		   on (input_vec.customer_id = input.customer_id and
-			   input_vec.run_id = input.run_id)
-		where candidates.run_id = 0
-		and input.run_id = $1),
-		bin_keys as (
-			select input.customer_id as input_customer_id,
-				   match.customer_id as match_customer_id
-			from customer_keys input
-			join customer_keys match
-			on (input.binary_key = match.binary_key)
-			join matches
-			on (matches.input_customer_id = input.customer_id and
-				matches.candidate_customer_id = match.customer_id)
-		)
-		select coalesce(matches.input_customer_id, 0),
-			   coalesce(matches.input_run_id, 0),
-			   coalesce(matches.input_first_name, ''),
-			   coalesce(matches.input_last_name, ''),
-			   coalesce(matches.input_street, ''),
-			   coalesce(matches.input_city, ''),
-			   coalesce(matches.input_state, ''),
-			   coalesce(matches.input_zip_code, ''),
-			   coalesce(matches.input_phone_number, ''),
-			   coalesce(matches.candidate_customer_id, 0),
-			   coalesce(matches.candidate_run_id, 0),
-			   coalesce(matches.candidate_first_name, ''),
-			   coalesce(matches.candidate_last_name, ''),
-			   coalesce(matches.candidate_street, ''),
-			   coalesce(matches.candidate_city, ''),
-			   coalesce(matches.candidate_state, ''),
-			   coalesce(matches.candidate_zip_code, ''),
-			   coalesce(matches.candidate_phone_number, ''),
-			   coalesce(matches.similarity, 100) as similarity,
-			   case when bin_keys.match_customer_id is null then false else true end as bin_key_match,
-			   sum(coalesce(input_tfidf.ngram_tfidf, 0) * coalesce(candidate_tfidf.ngram_tfidf, 0)) as tfidf_score,
-			   rank() over (partition by matches.input_customer_id order by coalesce(matches.similarity, 100)) as rank
-		from matches
-		join customer_tokens input_tfidf
-		on (input_tfidf.run_id = matches.input_run_id and
-			input_tfidf.customer_id = matches.input_customer_id)
-		join customer_tokens candidate_tfidf
-		on (candidate_tfidf.run_id = matches.candidate_run_id and
-			candidate_tfidf.customer_id = matches.candidate_customer_id and
-			candidate_tfidf.entity_type_id = input_tfidf.entity_type_id and
-		   candidate_tfidf.ngram_token = input_tfidf.ngram_token)
-		left outer join bin_keys
-		on (bin_keys.input_customer_id = matches.input_customer_id and
-			bin_keys.match_customer_id = matches.candidate_customer_id)
-		where matches.similarity <= .1  and
-		      not exists (
-		          select 'tommy was here'
-		          from matches m
-		          where m.candidate_customer_id = matches.input_customer_id and
-		                m.candidate_run_id = matches.input_run_id)
-		group by matches.input_customer_id,
-			   matches.input_run_id,
-			   matches.input_first_name,
-			   matches.input_last_name,
-			   matches.input_street,
-			   matches.input_city,
-			   matches.input_state,
-			   matches.input_zip_code,
-			   matches.input_phone_number,
-			   matches.candidate_customer_id,
-			   matches.candidate_run_id,
-			   matches.candidate_first_name,
-			   matches.candidate_last_name,
-			   matches.candidate_street,
-			   matches.candidate_city,
-			   matches.candidate_state,
-			   matches.candidate_zip_code,
-			   matches.candidate_phone_number,
-			   matches.similarity,
-			   case when bin_keys.match_customer_id is null then false else true end
-		order by matches.input_customer_id, matches.similarity;
-	`
+	query, err := LoadSQLQuery("/Users/thomasmcgeehan/AddressMatchPro/AddressMatchPro/internal/matcher/match.sql")
+	if err != nil {
+		return nil, err
+	}
 
 	// Log the query and the runID parameter
 	log.Printf("Executing query with runID: %d\nQuery: %s\n", runID, query)
