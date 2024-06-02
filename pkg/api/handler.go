@@ -32,10 +32,10 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/TFMV/AddressMatchPro/internal/matcher"
 	"github.com/TFMV/AddressMatchPro/pkg/utils"
@@ -43,9 +43,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// HealthCheckHandler returns a simple health check response
+func HealthCheckHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	}
+}
+
 // MatchHandler handles both single and batch match requests
 func MatchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		log.Println("Entering MatchHandler")
 		var req matcher.MatchRequest
 		isBatch := false
 
@@ -58,10 +66,13 @@ func MatchHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 		if isBatch {
 			handleBatchMatch(c, pool, file)
 		} else {
-			if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
+			log.Println("Processing single match request")
+			if err := c.ShouldBindJSON(&req); err != nil {
+				log.Printf("Error binding JSON: %v", err)
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
+			log.Printf("MatchRequest: %+v", req)
 			handleSingleMatch(c, pool, req)
 		}
 	}
@@ -91,12 +102,15 @@ func MatchDuplicates(pool *pgxpool.Pool) gin.HandlerFunc {
 }
 
 func handleSingleMatch(c *gin.Context, pool *pgxpool.Pool, req matcher.MatchRequest) {
+	log.Println("Handling single match")
 	// Insert the single record into the database with a unique run_id
 	runID := matcher.CreateNewRun(pool, "Single Record Matching")
 	req.RunID = runID
+	req.ScriptPath = "/Users/thomasmcgeehan/AddressMatchPro/AddressMatchPro/python-ml/generate_embeddings.py" // Set the script path
 
 	// Process the single record
 	if err := matcher.ProcessSingleRecord(pool, req); err != nil {
+		log.Printf("Failed to insert single record: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to insert single record: %v", err)})
 		return
 	}
@@ -143,6 +157,7 @@ func handleBatchMatch(c *gin.Context, pool *pgxpool.Pool, file *multipart.FileHe
 }
 
 func processAndMatch(pool *pgxpool.Pool, runID int, topN int, workers int, c *gin.Context) {
+	log.Println("Processing and matching")
 	// Load reference entities once
 	referenceEntities := matcher.LoadReferenceEntities(pool)
 
@@ -167,15 +182,4 @@ func processAndMatch(pool *pgxpool.Pool, runID int, topN int, workers int, c *gi
 	}
 
 	c.JSON(http.StatusOK, candidates)
-}
-
-// HealthCheckHandler handles health check requests
-func HealthCheckHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		zuluTime := time.Now().UTC().Format(time.RFC3339)
-		c.JSON(http.StatusOK, gin.H{
-			"status":   "OK",
-			"zuluTime": zuluTime,
-		})
-	}
 }

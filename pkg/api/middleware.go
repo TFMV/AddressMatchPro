@@ -57,12 +57,18 @@ func ErrorHandler() gin.HandlerFunc {
 	}
 }
 
-// RequestValidator validates incoming requests
+// RequestValidator validates incoming JSON requests
 func RequestValidator() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := c.ShouldBindJSON(&struct{}{}); err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
-			return
+		log.Println("Validating request")
+		if c.Request.Method == http.MethodPost {
+			var requestBody map[string]interface{}
+			if err := c.ShouldBindJSON(&requestBody); err != nil {
+				log.Printf("Error binding JSON: %v", err)
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+				return
+			}
+			log.Printf("Request body: %v", requestBody)
 		}
 		c.Next()
 	}
