@@ -50,6 +50,7 @@ AddressMatchPro is an advanced entity matching solution leveraging machine learn
 - [x] Generate vector embeddings using Python and spaCy.
 - [x] Support single match request use case
 - [x] Support batch match requests
+- [ ] Top Layer Logistic Regression Model (awaiting labeled examples)
 
 ### Phase 3: API Development
 
@@ -250,11 +251,6 @@ AddressMatchPro is an advanced entity matching solution leveraging machine learn
   }
 ]
 ```
-
-
-## Get Involved
-
-We welcome contributions and feedback from the community. Feel free to open issues or submit pull requests as we work towards our milestones. Let's make AddressMatchPro the best entity matching solution together!
 
 ## License
 
