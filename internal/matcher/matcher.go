@@ -176,12 +176,36 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int, topN int) ([]Candidate,
 		candidate.TrigramCosinePhoneNumber = ngramFrequencySimilarity(candidate.InputPhoneNumber, candidate.CandidatePhoneNumber, 2)
 		candidate.TrigramCosineZipCode = ngramFrequencySimilarity(candidate.InputZipCode, candidate.CandidateZipCode, 2)
 
-		// Compute the score
-		// Here we should adjust the score calculation logic
-		// Normalize similarity score such that 0 similarity means perfect match and score is 100
+		// Compute the normalized similarity score
 		normalizedSimilarity := 1 - candidate.Similarity
-		score := 0.8*normalizedSimilarity + 0.2*candidate.TfidfScore
-		candidate.Score = math.Max(1, math.Min(100, score*100))
+
+		// Define weights for each feature based on its importance
+		weights := map[string]float64{
+			"similarity":  0.25,
+			"tfidf":       0.2,
+			"firstName":   0.1,
+			"lastName":    0.1,
+			"street":      0.1,
+			"city":        0.1,
+			"phoneNumber": 0.05,
+			"zipCode":     0.05,
+			"binKeyMatch": 0.05,
+		}
+
+		// Adjust composite score based on binary key match
+		binKeyMatchScore := 0.0
+		if candidate.BinKeyMatch {
+			binKeyMatchScore = 1.0
+		}
+
+		// Calculate composite score based on weighted features
+		compositeScore := normalizedSimilarity*weights["similarity"] + candidate.TfidfScore*weights["tfidf"] +
+			candidate.TrigramCosineFirstName*weights["firstName"] + candidate.TrigramCosineLastName*weights["lastName"] +
+			candidate.TrigramCosineStreet*weights["street"] + candidate.TrigramCosineCity*weights["city"] +
+			candidate.TrigramCosinePhoneNumber*weights["phoneNumber"] + candidate.TrigramCosineZipCode*weights["zipCode"] +
+			binKeyMatchScore*weights["binKeyMatch"]
+
+		candidate.Score = math.Max(1, math.Min(100, compositeScore*100))
 
 		candidates = append(candidates, candidate)
 	}

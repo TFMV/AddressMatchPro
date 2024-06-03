@@ -61,7 +61,7 @@ Address Match Pro (AMP) is an advanced entity matching solution leveraging machi
 
 ## Examples
 
-### Request (POST)
+### Request (POST) /api/v1/match
 
 ```json
 {
