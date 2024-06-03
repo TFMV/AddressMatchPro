@@ -240,7 +240,7 @@ Address Match Pro (AMP) is an advanced entity matching solution leveraging machi
 
 ## Data Model
 
-![AddressMatchPro](assets/Amp-DataModel.png)
+![AddressMatchPro](assets/AMP-DataModel.png)
 
 ## License
 
