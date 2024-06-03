@@ -176,8 +176,11 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int, topN int) ([]Candidate,
 		candidate.TrigramCosinePhoneNumber = ngramFrequencySimilarity(candidate.InputPhoneNumber, candidate.CandidatePhoneNumber, 2)
 		candidate.TrigramCosineZipCode = ngramFrequencySimilarity(candidate.InputZipCode, candidate.CandidateZipCode, 2)
 
-		// Compute the score as 80% vector similarity and 20% n-gram TFIDF score
-		score := 0.8*candidate.Similarity + 0.2*candidate.TfidfScore
+		// Compute the score
+		// Here we should adjust the score calculation logic
+		// Normalize similarity score such that 0 similarity means perfect match and score is 100
+		normalizedSimilarity := 1 - candidate.Similarity
+		score := 0.8*normalizedSimilarity + 0.2*candidate.TfidfScore
 		candidate.Score = math.Max(1, math.Min(100, score*100))
 
 		candidates = append(candidates, candidate)
