@@ -1,0 +1,79 @@
+@startuml
+
+!theme plain
+top to bottom direction
+skinparam linetype polyline
+
+class batch_match {
+   first_name: text
+   last_name: text
+   phone_number: text
+   street: text
+   city: text
+   state: text
+   zip_code: text
+   customer_id: integer
+}
+class customer_keys {
+   customer_id: integer
+   binary_key: text
+   run_id: integer
+}
+class customer_matching {
+   first_name: text
+   last_name: text
+   phone_number: text
+   street: text
+   city: text
+   state: text
+   zip_code: text
+   customer_id: integer
+   run_id: integer
+}
+class customer_tokens {
+   customer_id: integer
+   entity_type_id: integer
+   ngram_token: text
+   ngram_tfidf: double precision
+   run_id: integer
+}
+class customer_tokens_run_0 {
+   customer_id: integer
+   entity_type_id: integer
+   ngram_token: text
+   ngram_tfidf: double precision
+   run_id: integer
+}
+class customer_vector_embedding {
+   customer_id: integer
+   vector_embedding: vector(300)
+   run_id: integer
+}
+class customers {
+   customer_id: integer
+   customer_fname: text
+   customer_lname: text
+   customer_email: text
+   customer_password: text
+   customer_street: text
+   customer_city: text
+   customer_state: text
+   customer_zipcode: text
+}
+class reference_entities {
+   entity_value: text
+   id: integer
+}
+class runs {
+   description: text
+   created_at: timestamp
+   run_id: integer
+}
+class tokens_idf {
+   entity_type_id: integer
+   ngram_token: text
+   ngram_idf: double precision
+   run_id: integer
+}
+
+@enduml

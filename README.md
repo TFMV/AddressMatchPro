@@ -238,6 +238,10 @@ Address Match Pro (AMP) is an advanced entity matching solution leveraging machi
 ]
 ```
 
+## Data Model
+
+![AddressMatchPro](assets/Amp-DataModel.png)
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
