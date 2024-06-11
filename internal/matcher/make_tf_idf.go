@@ -326,3 +326,4 @@ func GenerateTFIDF(pool *pgxpool.Pool, runID int) {
 
 	log.Println("TF/IDF calculation and insertion completed successfully.")
 }
+

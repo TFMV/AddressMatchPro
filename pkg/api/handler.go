@@ -189,3 +189,4 @@ func processAndMatch(pool *pgxpool.Pool, runID int, topN int, workers int, c *gi
 
 	c.JSON(http.StatusOK, candidates)
 }
+

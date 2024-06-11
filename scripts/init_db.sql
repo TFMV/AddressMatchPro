@@ -162,3 +162,4 @@ CREATE TABLE IF NOT EXISTS public.customers (
   customer_zipcode TEXT,
   PRIMARY KEY (customer_id)
 );
+

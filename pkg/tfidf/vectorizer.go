@@ -102,3 +102,4 @@ func (v *Vectorizer) FitTransform(docs []string) [][]float64 {
 	v.Fit(docs)
 	return v.Transform(docs)
 }
+

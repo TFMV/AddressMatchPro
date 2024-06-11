@@ -24,3 +24,4 @@ else
   echo "Service deployed successfully!"
   echo "Service URL: $SERVICE_URL"
 fi
+

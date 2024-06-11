@@ -77,3 +77,4 @@ for customer in customers:
 conn.commit()
 cur.close()
 conn.close()
+

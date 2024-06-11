@@ -98,3 +98,4 @@ GROUP BY matches.input_customer_id,
          CASE WHEN bin_keys.match_customer_id IS NULL THEN FALSE ELSE TRUE END,
          matches.similarity
 ORDER BY matches.input_customer_id, matches.similarity;
+

@@ -30,3 +30,4 @@ RUN /app/venv/bin/pip install --no-cache-dir -r /app/python-ml/requirements.txt
 EXPOSE 8080
 
 CMD ["./addressmatchpro"]
+

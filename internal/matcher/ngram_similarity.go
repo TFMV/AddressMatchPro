@@ -102,3 +102,4 @@ func ngramFrequencySimilarity(s1, s2 string, n int) float64 {
 	ngramsB := ngrams(s2, n)
 	return cosineSimilarity(ngramsA, ngramsB)
 }
+
