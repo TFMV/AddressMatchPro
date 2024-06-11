@@ -2,3 +2,4 @@ pandas==1.5.3
 psycopg2-binary==2.9.5
 scikit-learn==1.2.2
 spacy
+

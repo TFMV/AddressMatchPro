@@ -295,3 +295,4 @@ func TruncateBatchMatchTable(pool *pgxpool.Pool) error {
 	_, err := pool.Exec(context.Background(), "TRUNCATE TABLE batch_match")
 	return err
 }
+

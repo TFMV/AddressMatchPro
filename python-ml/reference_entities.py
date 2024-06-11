@@ -113,3 +113,4 @@ insert_statement = f"INSERT INTO public.reference_entities (ID, entity_value) VA
 
 # Print the SQL statement
 print(insert_statement)
+

@@ -123,3 +123,4 @@ func LoadCSV(pool *pgxpool.Pool, csvFilePath string) error {
 	log.Printf("Copied %v rows to %s table", copyCount, config.DBCreds.LoadTable)
 	return nil
 }
+

@@ -229,3 +229,4 @@ func FindPotentialMatches(pool *pgxpool.Pool, runID int, topN int) ([]Candidate,
 
 	return candidates, nil
 }
+

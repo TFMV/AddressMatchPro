@@ -67,3 +67,4 @@ func NewConnection(creds DBCreds) (*pgxpool.Pool, error) {
 
 	return pool, nil
 }
+

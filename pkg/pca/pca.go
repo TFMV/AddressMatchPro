@@ -122,3 +122,4 @@ func compute(X, Y mat.Matrix) *mat.Dense {
 	ret.Mul(X, Y)
 	return &ret
 }
+

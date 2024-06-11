@@ -67,3 +67,4 @@ func (l *Logger) Fatal(format string, v ...interface{}) {
 	l.Printf(fmt.Sprintf("[FATAL] %s", format), v...)
 	os.Exit(1)
 }
+

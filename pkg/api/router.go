@@ -40,3 +40,4 @@ func SetupRoutes(router *gin.Engine, pool *pgxpool.Pool) {
 	router.POST("/api/v1/match", MatchHandler(pool))
 	router.POST("/api/v1/duplicates", MatchHandler(pool))
 }
+

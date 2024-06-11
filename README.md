@@ -253,3 +253,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 Thomas F McGeehan V
 
 ![AddressMatchPro](assets/inspector-gadget.png)
+

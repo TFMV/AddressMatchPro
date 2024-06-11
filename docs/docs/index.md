@@ -12,3 +12,4 @@ AddressMatchPro is an advanced entity matching solution using machine learning t
 ## Installation
 
 Follow the instructions in the [Getting Started](getting-started.md) page to set up the project.
+
