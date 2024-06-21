@@ -41,8 +41,13 @@ func StandardizeAddress(street string) (string, error) {
 	// Normalize the street address by converting to lower case and trimming spaces
 	street = strings.ToLower(strings.TrimSpace(street))
 
-	// Remove any commas
-	street = strings.ReplaceAll(street, ",", "")
+	// Remove any commas, periods, or other punctuation from the street address
+	street = strings.Map(func(r rune) rune {
+		if unicode.IsPunct(r) || unicode.IsSymbol(r) {
+			return -1
+		}
+		return r
+	}, street)
 
 	// Remove extra spaces within the street address
 	street = strings.Join(strings.Fields(street), " ")

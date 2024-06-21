@@ -50,7 +50,7 @@ func TestStandardizeAddress(t *testing.T) {
 		{
 			name:     "Complex address",
 			input:    "4040 Southwest Highland TERRACE, Unit #B-12, Floor 3",
-			expected: "4040 sw highland ter unit b-12 fl 3",
+			expected: "4040 sw highland ter unit b12 fl 3",
 		},
 		{
 			name:     "Address with all lowercase",
